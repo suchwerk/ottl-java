@@ -1,0 +1,26 @@
+---
+description: Core architecture constraints for ottl-java
+alwaysApply: true
+---
+
+# ottl-java architecture constraints
+
+- **Java 21**, Maven multi-module. Build/test with `./mvnw verify`. Run Maven with a Java 21 JDK.
+- **The core engine must not depend on Quarkus.** Only `quarkus-ottl/*` and `examples/*` may use Quarkus.
+  Dependency direction: `ottl-language` ← `ottl-engine` ← (`ottl-functions-*`, `ottl-context-*`) ← `quarkus-ottl`.
+- **Parsing is a hand-written recursive-descent parser** in `ottl-language` (no ANTLR). See
+  `docs/architecture.md §3`. Keep the AST pure (no evaluation logic) so parser tests stay simple.
+- **Property access goes through the `PropertyResolver` SPI** (`io.ottl.spi`). Add new data-type
+  support as a new resolver + `META-INF/services/io.ottl.spi.PropertyResolver` entry. Never add
+  unrestricted reflection or arbitrary method invocation.
+- **Functions go through `FunctionRegistry`** (the allowlist). Add standard functions to
+  `ottl-functions-standard` with a `META-INF/services/io.ottl.function.OttlFunction` entry.
+- **Compiled programs are immutable and thread-safe.** Do not store per-execution state on them; use
+  `ExecutionContext`. Never recompile expressions inside `apply(...)`.
+- **Security first:** rule authors are less trusted. Enforce allowlists, complexity limits
+  (`OttlLimits`), no I/O, and validation-before-activation in `RuleManager`.
+- **Native-image awareness:** no runtime classpath scanning or dynamic class generation. Do build-time
+  discovery (Jandex) in the deployment module and register reflection/services there. Do **not** claim
+  native support unless a native build + smoke test actually passes.
+- **Honesty:** if something is beyond MVP scope, leave an explicit `TODO`/skeleton (see
+  `ottl-context-otel`). Don't fake functionality or claim OTTL v1 compliance before conformance passes.

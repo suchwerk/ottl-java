@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.ottl</groupId>
+        <artifactId>ottl-java-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ottl-language</artifactId>
+    <name>OTTL Java :: Language (lexer, parser, AST)</name>
+    <description>Hand-written lexer, recursive-descent parser and AST for the OTTL subset.
+        Pure Java, no external runtime dependencies, native-image friendly.</description>
+</project>

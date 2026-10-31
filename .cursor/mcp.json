@@ -1,0 +1,15 @@
+
+{
+  "mcpServers": {
+    "quarkus-agent": {
+      "command": "jbang",
+      "args": [
+        "quarkus-agent-mcp@quarkusio"
+      ],
+      "env": {
+        "AGENT_MCP_LOG_ENABLED": "true"
+      }
+    }
+  }
+}
+

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.ottl</groupId>
+        <artifactId>ottl-java-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ottl-context-otel</artifactId>
+    <name>OTTL Java :: Context (OpenTelemetry) [SKELETON]</name>
+    <description>SKELETON ONLY. Will provide PropertyResolvers over OpenTelemetry pdata
+        (spans, metrics, logs) for STANDARD-profile parity. Not implemented in the MVP.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.ottl</groupId>
+            <artifactId>ottl-engine</artifactId>
+        </dependency>
+    </dependencies>
+</project>

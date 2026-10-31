@@ -1,0 +1,4 @@
+# Standard OTTL editor functions, discovered by the engine via ServiceLoader.
+io.ottl.functions.standard.SetFunction
+io.ottl.functions.standard.DeleteKeyFunction
+io.ottl.functions.standard.KeepKeysFunction

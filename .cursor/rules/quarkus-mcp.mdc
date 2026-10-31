@@ -1,0 +1,23 @@
+---
+description: Using the Quarkus Agent MCP server for Quarkus work in ottl-java
+alwaysApply: true
+---
+
+# Quarkus development via MCP
+
+This repo is configured for the **official Quarkus Agent MCP server** in `.cursor/mcp.json`
+(`jbang quarkus-agent-mcp@quarkusio`). It is a **development tool**, not a feature of the OTTL app.
+
+- For any Quarkus question, API, config, or doc lookup, use the Quarkus MCP tools (e.g.
+  `quarkus_searchDocs`, `quarkus_skills`) rather than guessing. Pass `projectDir` pointing at a module
+  that has Quarkus dependencies (e.g. `examples/quarkus-example` or `quarkus-ottl/runtime`) so docs
+  match the project's Quarkus version.
+- **Do not** build a custom MCP server as part of this project.
+- **Do not** confuse the Quarkus development MCP server with an OTTL application feature.
+
+## Verify MCP connectivity
+
+1. In Cursor, open the MCP settings and confirm the `quarkus-agent` server is listed and green.
+2. Ensure `jbang` is installed (the server is launched via `jbang quarkus-agent-mcp@quarkusio`).
+3. From the agent, call a lightweight tool such as `quarkus_list` or `quarkus_searchDocs` with a
+   `projectDir` of `examples/quarkus-example`; a successful response confirms connectivity.
