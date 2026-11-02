@@ -63,13 +63,18 @@ reference Go implementation does **not** use ANTLR — it uses a PEG/parser-comb
 `where` condition is a complete boolean expression. No statement terminator is needed, and a
 statement may wrap across lines. A `where` block (`where <condition> { ... }`) is an ottl-java
 extension: the condition is evaluated once, then every item in the braces runs. A trailing
-`where` on a single editor statement is unchanged.
+`where` on a single editor statement is unchanged. Blocks and `if` / `else` are a further
+extension, accepted only when the engine's [dialect](#10-ottl-extended-language) is `EXTENDED`.
 
 ### Grammar (implemented subset)
 
 ```
 script      := item*
-item        := whereBlock | statement
+item        := block | ifStatement | whereBlock | statement
+block       := "{" item* "}"                              # OttlDialect.EXTENDED
+ifStatement := "if" condition block
+               ("else" "if" condition block)*
+               ("else" block)?                            # OttlDialect.EXTENDED
 whereBlock  := "where" condition "{" item* "}"
 statement   := functionCall ("where" condition)?
 condition   := orExpr
@@ -86,9 +91,15 @@ functionCall:= IDENT "(" (value ("," value)*)? ")"
 
 ## 4. Engine design
 
-### Profiles
-- `STANDARD` — OTTL-compatible behavior (maps/attributes).
-- `JAVA` — STANDARD plus Java object access (POJOs, records, beans) and Java-only functions.
+### Profiles and dialects
+A **profile** chooses data shapes. A **dialect** chooses syntax. They are independent.
+
+- `OttlProfile.STANDARD` — OTTL-compatible behavior (maps/attributes).
+- `OttlProfile.JAVA` — STANDARD plus Java object access (POJOs, records, beans) and Java-only functions.
+- `OttlDialect.OTTL` (default) — supported OTTL statements, a trailing `where`, and the existing
+  `where condition { ... }` block. Bare `{ ... }` blocks and `if` / `else` are rejected.
+- `OttlDialect.EXTENDED` — the OTTL dialect plus blocks and `if` / `else if` / `else`. This is not
+  OpenTelemetry OTTL. See [§10](#10-ottl-extended-language).
 
 ### Property access SPI
 `io.ottl.spi.PropertyResolver` is the extension point. Resolvers are discovered via `ServiceLoader`
@@ -179,6 +190,9 @@ Explicitly **not** implemented in the MVP (documented honestly rather than faked
 - `where` combined with OTTL's full converter library; only the allowlisted functions are available.
 - Statement-level `ottl`-config features (conditions list, error modes, telemetry settings).
 - Full operator-precedence parity audits against the Go PEG grammar (we cover the common subset).
+- Loops (`while`, `for`, `foreach`), recursive functions, arbitrary Java method calls, `let` bindings,
+  and named rule blocks. Blocks are shaped so a future `let` can be lexical and immutable; they are
+  not implemented.
 
 See [conformance.md](conformance.md) for the reference cases currently exercised.
 
@@ -187,10 +201,141 @@ See [conformance.md](conformance.md) for the reference cases currently exercised
 - **Allowlists**: only registered functions are callable; only declared properties / map entries /
   record components are accessible. There is **no path to arbitrary Java method invocation**.
 - **No I/O**: expressions can only call curated functions — no file or network access.
-- **Complexity bounds**: `OttlLimits` caps source length, statement count, path depth and call nesting,
-  enforced at compile time.
+- **Complexity bounds**: `OttlLimits` caps source length, editor-statement count (including statements
+  nested in blocks and branches), path depth, and nesting of calls, `where` blocks, bare blocks, and
+  `if` / `else if`. The parser enforces the same nesting limit, and refuses to recurse past 64 levels,
+  before a program is executed.
 - **Validation before activation**: `RuleManager.activate` compiles+validates before swapping.
 - **Clear diagnostics**: parse errors carry `line:column`; evaluation errors name the offending path.
 - **Performance**: immutable compiled plans, cached accessors, lock-free reads. JMH benchmarks live in
   `ottl-benchmarks`.
+
+## 10. OTTL Extended Language
+
+`if` / `else` and statement blocks are an **ottl-java extension**. They are not OpenTelemetry OTTL.
+The default dialect is `OttlDialect.OTTL`, so existing programs keep parsing as they do today.
+Opt in explicitly:
+
+```java
+OttlEngine engine = OttlEngine.builder()
+        .profile(OttlProfile.JAVA)
+        .dialect(OttlDialect.EXTENDED)
+        .build();
+```
+
+`OttlDialect` lives in `io.ottl.lang` because the parser enforces it. The engine module already
+depends on the language module; putting the enum in `io.ottl` would split that package across jars.
+
+In the OTTL dialect the parser rejects the new syntax:
+
+```text
+Language feature 'if/else' requires OttlDialect.EXTENDED.
+```
+
+`where condition { ... }` stays valid in **both** dialects. It shipped before the dialect split, and
+moving it would reject programs that already parse. It has the same execution shape as an `if`
+without `else` (the condition runs once, then the body runs on the same root) but remains a
+`WhereBlock` so existing AST consumers stay compatible. `if` / `else if` / `else` is an `IfStatement`.
+`else if` is a nested `IfStatement`; `else` is a `Block`.
+
+### Syntax
+
+```text
+{
+    set(order.status, "REVIEW")
+    set(order.priority, "HIGH")
+}
+
+if order.amount > 10000 {
+    set(order.status, "REVIEW")
+    set(order.priority, "HIGH")
+} else if order.amount > 5000 {
+    set(order.priority, "MEDIUM")
+} else {
+    set(order.priority, "LOW")
+}
+```
+
+Rules:
+
+- A block is zero or more statements, executed in order on the **same** root. Empty blocks are valid.
+  Nested blocks do not create a new root or a new `ExecutionContext`.
+- Conditional bodies require braces. There is no single-statement form.
+- Only the first matching branch runs. Its condition is evaluated once. Skipped branches are not
+  evaluated. `and` / `or` still short-circuit.
+- Every branch is validated at compile time, including branches that will not run. An unknown or
+  read-only property inside a nested block fails compilation.
+- `if` and `else` are statement keywords in the extended dialect. `order.if` is still a path.
+  In the OTTL dialect, `if(...)` remains an editor call.
+- A lone `else`, a missing `{`, and an extra `}` are parse errors with a line and column.
+
+### Examples
+
+Java record (COPY). The original is left unchanged:
+
+```java
+OttlProgram<Order> program = engine.compile("""
+        if order.amount > 10000 {
+            set(order.status, "REVIEW")
+        } else {
+            set(order.status, "APPROVED")
+        }
+        """, Order.class);
+```
+
+JavaBean (MUTATE). `customer` is updated in place:
+
+```java
+engine.compile("""
+        if customer.premium == true {
+            set(customer.tier, "GOLD")
+        } else {
+            set(customer.tier, "BASIC")
+        }
+        """, Customer.class);
+```
+
+JSON (`JsonNode`, mutate the tree):
+
+```java
+engine.compile("""
+        if order.amount > 10000 {
+            set(order.status, "REVIEW")
+        } else {
+            set(order.status, "APPROVED")
+        }
+        """, JsonNode.class, "order");
+```
+
+Quarkus. The dialect is runtime configuration and is applied to every rule the engine compiles.
+The extension default is `OTTL`. The example application sets `EXTENDED`:
+
+```properties
+quarkus.ottl.profile=JAVA
+quarkus.ottl.dialect=EXTENDED
+```
+
+```java
+rules.activate("order-rules", """
+        if order.amount > 10000 {
+            set(order.status, "REVIEW")
+        } else {
+            set(order.priority, "LOW")
+        }
+        """);
+```
+
+Activation still compiles before swapping. A program that fails to parse or that names an unknown
+property does not replace the active rule.
+
+### Limits and what is intentionally absent
+
+`OttlLimits.maxStatements` counts editor calls in every branch. `maxCallDepth` counts each `where`
+block, bare block, and `if` / `else if` as one level. The braces that belong to an `if` or `else` do
+not add a second level. `maxCallDepth` must be between 1 and 64; the parser will not recurse past
+that, so a deeply nested script cannot overflow the stack. There is no `while`, `for`, `foreach`,
+recursive call, or arbitrary method invocation.
+
+`let` and named `rule` blocks are not implemented. A `Block` is the place a future immutable
+lexical `let` would be scoped. Nothing stores per-execution bindings today.
 ```

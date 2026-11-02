@@ -44,7 +44,8 @@ semantic feature (diagnostics, completion, hover, signatures) to the Java server
 ```java
 @Produces @Singleton
 OttlMetadata ottlMetadata(OttlEngine engine) {
-    return new OttlMetadata(engine.accessorRegistry(), engine.functions());
+    return new OttlMetadata(engine.accessorRegistry(), engine.functions(), engine.enumRegistry(),
+            engine.dialect(), engine.limits().maxCallDepth());
 }
 ```
 
@@ -61,10 +62,12 @@ actually reject.
 
 - **Diagnostics** — real syntax errors from the hand-written parser (with 1-based line/column mapped
   to LSP ranges), plus semantic checks: unknown function, unknown property, write to a read-only
-  property, navigation into a non-accessible type, and arity errors.
-- **Completion** — OTTL/custom functions (with signature + docs), keywords/operators, and context
-  properties including **nested** navigation (e.g. `set(order.` → `Order` properties; `where
-  order.customer.` → `Customer` properties). Items carry the property type and read/write flags.
+  property, navigation into a non-accessible type, and arity errors. The server uses the engine's
+  dialect, so `if` / `else` and bare blocks are diagnosed as requiring `OttlDialect.EXTENDED` when
+  the engine is in the OTTL dialect, and nested statements are still checked when it is extended.
+- **Completion** — OTTL/custom functions (with signature + docs), keywords (`if` and `else` only in
+  the extended dialect), and context properties including **nested** navigation inside blocks
+  (e.g. `set(order.` → `Order` properties). Items carry the property type and read/write flags.
 - **Hover** — property type, readable/writable flags and declaring type; function signature and
   documentation.
 - **Signature help** — the active function signature with the active parameter highlighted.

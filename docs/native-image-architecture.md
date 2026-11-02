@@ -157,6 +157,8 @@ execute: ExecutionContext per apply() → resolvers → PropertyAccessor → POJ
 **Runtime** (`OttlRecorder`, `RUNTIME_INIT`):
 - Reads `OttlConfig` via `SmallRyeConfig.getConfigMapping` (**runtime** config, never frozen).
   Non-positive or unbounded limit values fail startup. Strict type checking is not configurable.
+  `quarkus.ottl.dialect` (`OTTL` by default, `EXTENDED` for blocks and `if` / `else`) is read here
+  and applied to every rule compiled by that engine. It is not fixed into the image.
 - Fetches the generated `PropertyAccessorRegistry` from Arc.
 - Builds the engine with `loadDefaults(false)`, the accessor registry, `strictTypes(true)`, the
   `MapResolver` and `JsonNodeResolver`, the standard editors, and every generated `@OttlFunction`
@@ -194,7 +196,8 @@ hammers transforms while a swapper thread flips the active rule.
 - **No arbitrary method invocation** — resolvers expose declared properties / map entries / record
   components only. There is no path syntax that calls an arbitrary Java method.
 - **No file/network/process access** through expressions.
-- **Complexity limits** — `OttlLimits` bounds source length, statement count, and path/argument depth.
+- **Complexity limits** — `OttlLimits` bounds source length, statement count (including statements
+  inside blocks and branches), path depth, and nesting of calls, blocks, and conditionals.
 - **No silent reflection fallback** — the reflective bean/record resolvers are *not* wired into the
   native engine, so an unregistered type cannot "accidentally" resolve.
 
