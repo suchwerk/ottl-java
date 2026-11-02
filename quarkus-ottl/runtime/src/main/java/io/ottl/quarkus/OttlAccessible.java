@@ -12,11 +12,13 @@ import java.lang.annotation.Target;
 /**
  * Marks a Java domain type (record, POJO/JavaBean) as accessible to OTTL rules.
  *
- * <p>At Quarkus build time the extension discovers these types, inspects their permitted properties
- * and generates native-image-safe {@link io.ottl.spi.PropertyAccessor}s for them — so OTTL rules can
- * read and write their properties <strong>without runtime reflection</strong>. Types that are not
- * annotated are not reachable from rules (rules referencing them are rejected at compile time in
- * strict mode).
+ * <p>At Quarkus build time the extension discovers these types and generates native-image-safe
+ * accessors. The type must be a public concrete class or record. Nested types are accessible only
+ * when every enclosing type is public. Interfaces, enums, abstract classes and non-public types fail
+ * the build. Properties follow JavaBeans ({@code get}/{@code is}/{@code set}, with
+ * {@link java.beans.Introspector#decapitalize(String)}) and record components. Overloaded setters and
+ * getter/setter type mismatches fail the build. Static methods are not properties. Non-public
+ * accessors are ignored.
  *
  * <pre>{@code
  * @OttlAccessible

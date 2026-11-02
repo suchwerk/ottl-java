@@ -7,8 +7,8 @@ package io.ottl.quarkus;
 import java.util.List;
 
 /**
- * Build-time-discovered description of an {@link OttlFunction}-annotated method. Passed from the
- * deployment build step to the {@link OttlRecorder} so no classpath scanning happens at runtime.
+ * Build-time-discovered description of an {@link OttlFunction}-annotated method. The deployment
+ * module validates the method and generates a direct invoker; this bean is not consulted at runtime.
  *
  * <p>Modeled as a mutable JavaBean (no-arg constructor + getters/setters) so Quarkus can record it
  * into bytecode without requiring {@code -parameters} metadata.

@@ -32,40 +32,42 @@ class ConcurrencyTest {
         int readers = 8;
         int iterations = 5_000;
         ExecutorService pool = Executors.newFixedThreadPool(readers + 1);
-        AtomicInteger errors = new AtomicInteger();
+        try {
+            AtomicInteger errors = new AtomicInteger();
 
-        // Writer thread continuously swaps the rule.
-        Future<?> writer = pool.submit(() -> {
-            for (int i = 0; i < 500; i++) {
-                try {
-                    rules.activate("r", "set(order.status, \"V" + (i % 3) + "\")");
-                } catch (RuntimeException e) {
-                    errors.incrementAndGet();
-                }
-            }
-        });
-
-        // Reader threads continuously apply the active rule.
-        Future<?>[] futures = new Future<?>[readers];
-        for (int t = 0; t < readers; t++) {
-            futures[t] = pool.submit(() -> {
-                Order order = new Order("o", new BigDecimal("1"), "NEW", "LOW");
-                for (int i = 0; i < iterations; i++) {
-                    Order result = rules.apply("r", order);
-                    // Every active version sets status to "V0".."V2" (or the initial "V1").
-                    if (result.status() == null || !result.status().startsWith("V")) {
+            // Writer thread continuously swaps the rule.
+            Future<?> writer = pool.submit(() -> {
+                for (int i = 0; i < 500; i++) {
+                    try {
+                        rules.activate("r", "set(order.status, \"V" + (i % 3) + "\")");
+                    } catch (RuntimeException e) {
                         errors.incrementAndGet();
                     }
                 }
             });
-        }
 
-        writer.get(60, TimeUnit.SECONDS);
-        for (Future<?> f : futures) {
-            f.get(60, TimeUnit.SECONDS);
-        }
-        pool.shutdownNow();
+            // Reader threads continuously apply the active rule.
+            Future<?>[] futures = new Future<?>[readers];
+            for (int t = 0; t < readers; t++) {
+                futures[t] = pool.submit(() -> {
+                    Order order = new Order("o", new BigDecimal("1"), "NEW", "LOW");
+                    for (int i = 0; i < iterations; i++) {
+                        Order result = rules.apply("r", order);
+                        // Every active version sets status to "V0".."V2" (or the initial "V1").
+                        if (result.status() == null || !result.status().startsWith("V")) {
+                            errors.incrementAndGet();
+                        }
+                    }
+                });
+            }
 
-        assertThat(errors.get()).isZero();
+            writer.get(60, TimeUnit.SECONDS);
+            for (Future<?> f : futures) {
+                f.get(60, TimeUnit.SECONDS);
+            }
+            assertThat(errors.get()).isZero();
+        } finally {
+            pool.shutdownNow();
+        }
     }
 }

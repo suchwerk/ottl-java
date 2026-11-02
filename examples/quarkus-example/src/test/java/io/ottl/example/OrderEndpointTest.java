@@ -9,8 +9,10 @@ import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 
 /** End-to-end REST tests, including a runtime rule change with no application restart. */
 @QuarkusTest
@@ -49,7 +51,17 @@ class OrderEndpointTest {
     void invalidRuleReturns400AndKeepsPreviousVersion() {
         given().contentType(ContentType.TEXT).body("set(order.status, )")
                 .when().put("/rules/order-rules")
-                .then().statusCode(400);
+                .then().statusCode(400)
+                .body("error", not(containsString("\tat ")));
+    }
+
+    @Test
+    void oversizedRuleIsRejectedByTheConfiguredLimit() {
+        String huge = "set(order.status, \"X\")" + " ".repeat(20_000);
+        given().contentType(ContentType.TEXT).body(huge)
+                .when().put("/rules/order-rules")
+                .then().statusCode(400)
+                .body("error", containsString("Source too long"));
     }
 
     @Test

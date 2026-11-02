@@ -47,8 +47,8 @@ removes or constrains each of them:
 | Mechanism | Prototype (JVM) | Native path |
 |-----------|-----------------|-------------|
 | **Property access reflection** | `BeanResolver` / `RecordResolver` use reflective getters/setters & canonical constructors. | **Not used.** Replaced by build-time **generated accessors** (`AccessorGenerator` + Gizmo). The reflective resolvers remain available for plain JVM/library use but are **not wired** into the Quarkus engine. |
-| **`ServiceLoader`** | Engine discovers resolvers & functions via SPI. | **Disabled** in the Quarkus engine (`loadDefaults(false)`); everything is wired explicitly in `OttlRecorder`. SPI service files are still registered (`ServiceProviderBuildItem`) for completeness. |
-| **`@OttlFunction` dispatch** | Reflective `Method.invoke`. | Still reflective, but **narrowly**: only the explicitly discovered function-host classes are registered for reflection (`ReflectiveClassBuildItem`). No arbitrary method is reachable. |
+| **`ServiceLoader`** | Engine discovers resolvers & functions via SPI. | **Disabled** in the Quarkus engine (`loadDefaults(false)`). Resolvers and functions are wired in `OttlRecorder`. SPI providers are **not** registered into the native image, so reflective bean/record resolvers cannot bypass the generated accessors. |
+| **`@OttlFunction` dispatch** | Reflective `Method.invoke`. | **Direct call** from a Gizmo-generated `@Singleton` invoker. Arc injects the host bean (a client proxy when the host is normal-scoped). |
 | **Runtime bytecode generation** | none | **none** — explicitly avoided. Accessors are generated at *build* time only. |
 | **Runtime class loading / Java compiler** | none | **none.** The parser is a hand-written recursive-descent parser (no ANTLR), so no runtime codegen. |
 | **`MethodHandle`** | none | none |
@@ -95,8 +95,18 @@ and emits a `PropertyAccessor` implementation with [Gizmo](https://github.com/qu
 
 - **Records**: `get` calls the component accessors; `set` builds a new instance via the canonical
   constructor, reading unchanged components and coercing the changed one (`ValueCoercion`).
-- **POJOs/JavaBeans**: `get` calls `getX()`/`isX()`; `set` calls `setX(...)` and returns the same
-  instance (MUTATE).
+- **POJOs/JavaBeans**: `get` calls `getX()` or, for booleans, `isX()` when both exist and agree;
+  `set` calls the single `setX(...)` and returns the same instance (MUTATE).
+- Public concrete classes and records only. Interfaces, enums, abstract classes, local classes and
+  types that are not public (including a public nested type inside a non-public outer type) fail
+  augmentation. Static methods are ignored. Bridge and synthetic methods are ignored so generic
+  overrides keep the specialized signature.
+- Overloaded setters, and a getter/setter pair whose types differ, fail augmentation. The message
+  names the class, the property and the conflicting signatures. There is no implicit coercion between
+  a getter type and a different setter type. Array properties are rejected because the descriptor
+  format cannot represent them.
+- Accessor class names keep distinct binary names distinct (`a.b.Foo_Bar` and `a.b.Foo$Bar` do not
+  collide).
 - Primitives are boxed/unboxed explicitly; `ValueCoercion` handles `Number`, `String`, `BigDecimal`,
   `Boolean`, enums, `char`, etc.
 - The `descriptor()` string encodes each property's name, declared type, and read/write flags; the
@@ -132,19 +142,26 @@ execute: ExecutionContext per apply() → resolvers → PropertyAccessor → POJ
 
 **Build time** (`OttlProcessor`):
 - `feature()` — registers the `ottl` feature.
-- `accessibleTypes()` — discovers `@OttlAccessible` via Jandex, generates accessors
-  (`GeneratedClassBuildItem`), generates the registry bean (`GeneratedBeanBuildItem`), marks it
-  unremovable, and registers the domain types for Jackson reflection.
-- `engine()` (`@Record(RUNTIME_INIT)`) — discovers `@OttlFunction` methods into `FunctionMetadata`,
-  registers their host beans + reflection, and records the synthetic `OttlEngine` bean.
-- `defaultBeans()` / `nativeServices()` — rule repository bean + SPI service registration.
+- `accessibleTypes()` — discovers `@OttlAccessible` via Jandex, rejects types and properties the
+  generator cannot support, generates accessors (`GeneratedClassBuildItem`), generates the registry
+  bean (`GeneratedBeanBuildItem`), marks it unremovable, and registers the domain types for Jackson
+  reflection (constructors, methods and fields).
+- `engine()` (`@Record(RUNTIME_INIT)`) — validates `@OttlFunction` methods, generates a CDI invoker
+  per method, registers host beans, and records the synthetic `OttlEngine` bean.
+- `ruleManagers()` — records a `@DefaultBean` `@Singleton` `RuleManager<T>` for each approved type.
+  An application producer of the same parameterized type is preferred.
+- `defaultBeans()` — the in-memory rule repository, overridable by an application `RuleRepository` bean.
 
 **Runtime** (`OttlRecorder`, `RUNTIME_INIT`):
 - Reads `OttlConfig` via `SmallRyeConfig.getConfigMapping` (**runtime** config, never frozen).
+  Non-positive or unbounded limit values fail startup. Strict type checking is not configurable.
 - Fetches the generated `PropertyAccessorRegistry` from Arc.
 - Builds the engine with `loadDefaults(false)`, the accessor registry, `strictTypes(true)`, the
-  `MapResolver` and `JsonNodeResolver`, the standard editors, and a `MethodFunctionAdapter` per
-  discovered function.
+  `MapResolver` and `JsonNodeResolver`, the standard editors, and every generated `@OttlFunction`
+  invoker.
+
+Custom property resolvers are not a Quarkus extension point. Add functions with `@OttlFunction`.
+The plain Java library still discovers resolvers and functions through `ServiceLoader`.
 
 Mutable rule state (the active `CompiledProgram` per rule id) lives in the `RuleRepository`/
 `RuleManager`, created at **runtime init** — it is never captured into the image heap.
@@ -179,8 +196,10 @@ hammers transforms while a swapper thread flips the active rule.
 - **No silent reflection fallback** — the reflective bean/record resolvers are *not* wired into the
   native engine, so an unregistered type cannot "accidentally" resolve.
 
-> The rule-management REST endpoints compile arbitrary rule source and are **development-only**; secure
-> them (authn/authz, network policy) before production use.
+> The rule-management REST endpoints and the editor API live in the example application, not in the
+> extension. They compile arbitrary rule source and are **development-only**. The extension exposes
+> no HTTP routes. Secure any management API you add (authn/authz, network policy) before production
+> use. Compilation limits come from `quarkus.ottl.max-source-length` and `quarkus.ottl.max-statements`.
 
 ---
 

@@ -61,21 +61,6 @@ public final class MethodFunctionAdapter implements io.ottl.function.OttlFunctio
     }
 
     private static Object coerce(Object value, Class<?> target) {
-        if (value == null || target.isInstance(value) || target == Object.class) {
-            return value;
-        }
-        if (value instanceof Number n) {
-            if (target == int.class || target == Integer.class) return n.intValue();
-            if (target == long.class || target == Long.class) return n.longValue();
-            if (target == double.class || target == Double.class) return n.doubleValue();
-            if (target == float.class || target == Float.class) return n.floatValue();
-        }
-        if ((target == boolean.class || target == Boolean.class) && value instanceof Boolean b) {
-            return b;
-        }
-        if (target == String.class) {
-            return value.toString();
-        }
-        return value;
+        return FunctionArguments.coerce(value, target);
     }
 }

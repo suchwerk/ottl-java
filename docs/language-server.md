@@ -174,8 +174,11 @@ npm run test:e2e           # starts Quarkus dev + Vite automatically
 
 ## Security (production hardening)
 
-The editor API and LSP WebSocket are **development tools** and are unauthenticated by default. Before
-exposing them in production:
+The editor API and LSP WebSocket live in the example application (`examples/quarkus-example` and
+`ottl-lsp-quarkus`). The OTTL extension itself does not open HTTP or WebSocket endpoints, so a
+production application that only depends on `quarkus-ottl` does not expose rule management.
+
+Before exposing the example endpoints in production:
 
 - **Authenticate and authorize** the rule-management endpoints and the WebSocket (e.g. per tenant,
   per rule set). Separate *validate/test* permissions from *activate* permissions.

@@ -4,6 +4,8 @@
  */
 package io.ottl.quarkus;
 
+import java.util.function.Function;
+
 import io.ottl.OttlEngine;
 import io.ottl.OttlLimits;
 import io.ottl.context.jackson.JsonNodeResolver;
@@ -11,39 +13,32 @@ import io.ottl.context.map.MapResolver;
 import io.ottl.functions.standard.DeleteKeyFunction;
 import io.ottl.functions.standard.KeepKeysFunction;
 import io.ottl.functions.standard.SetFunction;
+import io.ottl.rules.RuleManager;
+import io.ottl.rules.RuleRepository;
 import io.ottl.spi.PropertyAccessorRegistry;
 import io.quarkus.arc.Arc;
+import io.quarkus.arc.InstanceHandle;
+import io.quarkus.arc.SyntheticCreationalContext;
 import io.quarkus.runtime.RuntimeValue;
 import io.quarkus.runtime.annotations.Recorder;
 import io.smallrye.config.SmallRyeConfig;
 import org.eclipse.microprofile.config.ConfigProvider;
 
-import java.lang.reflect.Method;
-import java.util.List;
-import java.util.Map;
-
 /**
  * Records construction of the shared {@link OttlEngine} at runtime init.
  *
- * <p>The engine is wired <strong>explicitly and without {@link java.util.ServiceLoader}</strong> so
- * it behaves identically in JVM and native mode:
- * <ul>
- *   <li>Approved domain types resolve through build-time generated accessors
- *       ({@link PropertyAccessorRegistry}, fetched from Arc) — no reflection.</li>
- *   <li>Maps and Jackson {@code JsonNode} trees use their (reflection-free) resolvers.</li>
- *   <li>Standard editors ({@code set}/{@code delete_key}/{@code keep_keys}) and discovered
- *       {@code @OttlFunction} methods are registered.</li>
- *   <li>Strict type checking rejects rules referencing unknown types/properties at compile time.</li>
- * </ul>
+ * <p>The engine is wired explicitly and does not call {@link java.util.ServiceLoader}. Domain
+ * properties go through the generated {@link PropertyAccessorRegistry}. {@code @OttlFunction}
+ * methods are invoked by generated CDI beans, not by {@code Method.invoke}. Strict type checking
+ * stays on.
  */
 @Recorder
 public class OttlRecorder {
 
-    private static final Map<String, Class<?>> PRIMITIVES = Map.of(
-            "boolean", boolean.class, "byte", byte.class, "char", char.class, "short", short.class,
-            "int", int.class, "long", long.class, "float", float.class, "double", double.class);
+    static final int MAX_CONFIGURED_SOURCE_LENGTH = 1_000_000;
+    static final int MAX_CONFIGURED_STATEMENTS = 10_000;
 
-    public RuntimeValue<OttlEngine> createEngine(List<FunctionMetadata> metadata) {
+    public RuntimeValue<OttlEngine> createEngine() {
         SmallRyeConfig smallRyeConfig = ConfigProvider.getConfig().unwrap(SmallRyeConfig.class);
         OttlConfig config = smallRyeConfig.getConfigMapping(OttlConfig.class);
         PropertyAccessorRegistry registry = Arc.container().instance(PropertyAccessorRegistry.class).get();
@@ -51,7 +46,7 @@ public class OttlRecorder {
         OttlEngine.Builder builder = OttlEngine.builder()
                 .profile(config.profile())
                 .loadDefaults(false)
-                .limits(new OttlLimits(config.maxSourceLength(), config.maxStatements(), 16, 16))
+                .limits(limits(config))
                 .accessorRegistry(registry)
                 .strictTypes(true)
                 .resolver(new MapResolver())
@@ -60,38 +55,51 @@ public class OttlRecorder {
                 .function(new DeleteKeyFunction())
                 .function(new KeepKeysFunction());
 
-        for (FunctionMetadata meta : metadata) {
-            Class<?> declaring = loadClass(meta.getDeclaringClass());
-            Object bean = Arc.container().instance(declaring).get();
-            if (bean == null) {
-                throw new IllegalStateException(
-                        "No CDI bean found for @OttlFunction host " + meta.getDeclaringClass());
+        for (InstanceHandle<io.ottl.function.OttlFunction> handle : Arc.container()
+                .listAll(io.ottl.function.OttlFunction.class)) {
+            String beanClass = handle.getBean().getBeanClass().getName();
+            if (beanClass.startsWith("io.ottl.quarkus.functions.F_")) {
+                builder.function(handle.get());
             }
-            Method method = resolveMethod(declaring, meta.getMethodName(), meta.getParameterTypes());
-            builder.function(new MethodFunctionAdapter(meta.getFunctionName(), bean, method));
         }
         return new RuntimeValue<>(builder.build());
+    }
+
+    /**
+     * Supplies the default {@code RuleManager<T>} for one approved type. The injection points make
+     * Arc create the engine and the selected {@link RuleRepository} first.
+     */
+    public Function<SyntheticCreationalContext<RuleManager<?>>, RuleManager<?>> createRuleManager(String className) {
+        return ctx -> {
+            OttlEngine engine = ctx.getInjectedReference(OttlEngine.class);
+            RuleRepository repository = ctx.getInjectedReference(RuleRepository.class);
+            Class<?> type = loadClass(className);
+            return engine.ruleManager(type, repository);
+        };
+    }
+
+    static OttlLimits limits(OttlConfig config) {
+        int maxSourceLength = config.maxSourceLength();
+        int maxStatements = config.maxStatements();
+        if (maxSourceLength < 1 || maxSourceLength > MAX_CONFIGURED_SOURCE_LENGTH) {
+            throw new IllegalArgumentException(
+                    "quarkus.ottl.max-source-length must be between 1 and " + MAX_CONFIGURED_SOURCE_LENGTH
+                            + " (was " + maxSourceLength + ")");
+        }
+        if (maxStatements < 1 || maxStatements > MAX_CONFIGURED_STATEMENTS) {
+            throw new IllegalArgumentException(
+                    "quarkus.ottl.max-statements must be between 1 and " + MAX_CONFIGURED_STATEMENTS
+                            + " (was " + maxStatements + ")");
+        }
+        OttlLimits defaults = OttlLimits.defaults();
+        return new OttlLimits(maxSourceLength, maxStatements, defaults.maxPathDepth(), defaults.maxCallDepth());
     }
 
     private static Class<?> loadClass(String name) {
         try {
             return Class.forName(name, false, Thread.currentThread().getContextClassLoader());
         } catch (ClassNotFoundException e) {
-            throw new IllegalStateException("Cannot load class " + name, e);
-        }
-    }
-
-    private static Method resolveMethod(Class<?> declaring, String methodName, List<String> paramTypeNames) {
-        Class<?>[] params = new Class<?>[paramTypeNames.size()];
-        for (int i = 0; i < params.length; i++) {
-            String n = paramTypeNames.get(i);
-            params[i] = PRIMITIVES.containsKey(n) ? PRIMITIVES.get(n) : loadClass(n);
-        }
-        try {
-            return declaring.getDeclaredMethod(methodName, params);
-        } catch (NoSuchMethodException e) {
-            throw new IllegalStateException(
-                    "Cannot resolve @OttlFunction method " + declaring.getName() + "#" + methodName, e);
+            throw new IllegalStateException("Cannot load @OttlAccessible type " + name, e);
         }
     }
 }

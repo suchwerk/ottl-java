@@ -135,14 +135,22 @@ never recompiled per execution**. Programs are immutable and safe to share acros
 ## 6. Quarkus extension
 
 - **runtime** (`quarkus-ottl`): `@OttlFunction` annotation, `OttlConfig` (`quarkus.ottl.*`),
-  `OttlRecorder` (builds the shared `OttlEngine` at `RUNTIME_INIT`, reading config via SmallRye and
-  resolving `@OttlFunction` host beans from Arc), and a `@DefaultBean RuleRepository` producer.
+  `OttlRecorder` (builds the shared `OttlEngine` at `RUNTIME_INIT`), generated function invokers, and a
+  `@DefaultBean RuleRepository` producer.
 - **deployment** (`quarkus-ottl-deployment`): `FeatureBuildItem("ottl")`, Jandex discovery of
-  `@OttlFunction` methods, registration of host classes as (reflective) beans, a **synthetic**
-  `OttlEngine` bean, and `ServiceProviderBuildItem`s so SPI discovery works in native image.
-- **Generic injection**: `RuleManager<Order>` cannot be synthesized generically, so the application
-  provides an explicit `@Produces RuleManager<Order>` (see `OrderRulesProducer`). This is the
-  deliberate, valid CDI registration strategy the task calls for.
+  `@OttlAccessible` types and `@OttlFunction` methods, build-time validation, Gizmo accessors and
+  function invokers, a synthetic `OttlEngine` bean, and a `@DefaultBean RuleManager<T>` for each
+  approved type.
+- **Generic injection**: applications inject `RuleManager<Order>` directly. The extension registers
+  that parameterized bean as a `@DefaultBean`. An explicit `@Produces RuleManager<Order>` replaces it
+  without an ambiguous-resolution error.
+- **Functions**: `@OttlFunction` methods are validated at build time (visibility, duplicates, collisions
+  with `set` / `delete_key` / `keep_keys`). Each method gets a generated invoker that calls it
+  directly. Host classes with no scope become `@Singleton`.
+- **No ServiceLoader in the extension**: the Quarkus engine uses `loadDefaults(false)` and does not
+  register SPI providers into the native image. Maps, JSON, the standard editors and discovered
+  functions are wired explicitly. Reflective bean/record resolvers stay available to the plain Java
+  library and are not installed by the extension.
 
 ## 7. Native-image strategy
 

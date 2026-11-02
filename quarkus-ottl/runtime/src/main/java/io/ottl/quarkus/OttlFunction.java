@@ -23,9 +23,13 @@ import java.lang.annotation.Target;
  * }
  * }</pre>
  *
- * <p>Only annotated methods are exposed to rule authors; there is no way to invoke an arbitrary Java
- * method from OTTL source. The Quarkus extension discovers these methods at build time and registers
- * them (and the reflection metadata they need) with the engine.
+ * <p>Only annotated methods are exposed to rule authors. The method must be a public instance method
+ * on a public concrete CDI bean. The name must be an OTTL identifier and must not collide with
+ * another function or with the built-ins {@code set}, {@code delete_key} and {@code keep_keys}.
+ * Static methods, generic methods, array parameters and final methods on normal-scoped beans are
+ * rejected at build time. Host classes that declare no scope are registered as {@code @Singleton}.
+ * The generated invoker calls the method directly; argument coercion matches
+ * {@link FunctionArguments}.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)

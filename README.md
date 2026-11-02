@@ -92,11 +92,14 @@ Add the extension:
 </dependency>
 ```
 
-Inject the engine / rule manager, and expose Java functions:
+Inject the engine and a rule manager. The extension supplies {@code RuleManager<T>} for every
+{@code @OttlAccessible} type, so no producer is required for the common case. A hand-written
+{@code @Produces RuleManager<T>} still wins when an application needs a custom repository or lifecycle.
+
 ```java
 @ApplicationScoped
 public class OrderService {
-    @Inject RuleManager<Order> rules;           // provided via an explicit @Produces (see example)
+    @Inject RuleManager<Order> rules;
     public Order process(Order order) { return rules.apply("order-rules", order); }
 }
 
@@ -114,9 +117,13 @@ quarkus.ottl.max-statements=100
 quarkus.ottl.max-source-length=10000
 ```
 
-> **Note on generic injection:** CDI cannot synthesize `RuleManager<Order>` automatically. The
-> application declares an explicit `@Produces RuleManager<Order>` (see `OrderRulesProducer` in the
-> example). This is intentional.
+Strict checking of types, properties and functions stays on. It is not a configuration switch.
+`max-source-length` must be between 1 and 1000000, and `max-statements` between 1 and 10000.
+Path depth and call nesting stay at the engine default of 16.
+
+> **Note on generic injection:** the extension registers a `@DefaultBean` `RuleManager<T>` for each
+> `@OttlAccessible` type. Inject `RuleManager<Order>` directly. Declare your own `@Produces` method
+> only when you need to replace that default.
 
 ### Run the example app
 ```bash
@@ -144,8 +151,9 @@ curl -s -XPOST localhost:8080/orders/transform -H 'Content-Type: application/jso
 # -> priority is now "URGENT"
 ```
 
-> ⚠️ **The `/rules/*` management API is development-only.** It compiles and activates arbitrary rule
-> source. Secure it (authn/authz, network policy) before any production use.
+> The `/rules/*`, `/customers/rules`, `/shipments/rules` and `/editor/*` endpoints belong to the
+> example application. The extension does not publish them. They compile and activate arbitrary rule
+> source and are for local development. Do not expose them without authentication and authorization.
 
 ## Language
 
