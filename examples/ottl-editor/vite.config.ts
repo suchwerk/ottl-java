@@ -34,6 +34,10 @@ export default defineConfig({
         format: 'es'
     },
     optimizeDeps: {
+        // Pre-bundling moves this module into node_modules/.vite/deps, so its
+        // `new URL('./resources/*.svg', import.meta.url)` icon paths no longer
+        // resolve and Vite warns on every dev start. Serve the package as-is.
+        exclude: ['@codingame/monaco-vscode-theme-defaults-default-extension'],
         // monaco-vscode-api ships ESM that must not be pre-bundled into CommonJS.
         esbuildOptions: {
             target: 'es2022'
