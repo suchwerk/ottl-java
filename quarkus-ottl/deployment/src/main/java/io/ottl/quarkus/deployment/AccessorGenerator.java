@@ -78,7 +78,10 @@ final class AccessorGenerator {
 
     private static void generateRecordAccessor(AccessibleTypeModel.RecordModel model, ClassOutput output) {
         List<AccessibleTypeModel.RecordProperty> components = model.components();
-        Class<?>[] paramTypes = components.stream().map(AccessibleTypeModel.RecordProperty::type).toArray(Class<?>[]::new);
+        Class<?>[] paramTypes = new Class<?>[components.size()];
+        for (int i = 0; i < components.size(); i++) {
+            paramTypes[i] = components.get(i).type();
+        }
         MethodDescriptor canonicalCtor = MethodDescriptor.ofConstructor(model.type(), paramTypes);
 
         StringBuilder descriptor = new StringBuilder();
