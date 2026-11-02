@@ -26,13 +26,17 @@ export const ottlLanguageConfiguration: monaco.languages.LanguageConfiguration =
         { open: '[', close: ']' },
         { open: '{', close: '}' },
         { open: '"', close: '"' }
-    ]
+    ],
+    indentationRules: {
+        increaseIndentPattern: /\{[^}"']*$/,
+        decreaseIndentPattern: /^\s*\}/
+    }
 };
 
 export const ottlMonarchTokens: monaco.languages.IMonarchLanguage = {
     defaultToken: '',
     ignoreCase: false,
-    keywords: ['where', 'and', 'or', 'not'],
+    keywords: ['where', 'and', 'or', 'not', 'if', 'else'],
     constants: ['true', 'false', 'nil'],
     operators: ['==', '!=', '>', '>=', '<', '<=', '='],
     symbols: /[=><!]+/,
