@@ -5,7 +5,7 @@ extended to transform arbitrary Java objects — `Map`s, POJOs, Java records and
 trees — with **rules that can be compiled and replaced at runtime** and a first-class **Quarkus**
 extension.
 
-> **Status:** working MVP. `./mvnw verify` is green (38 tests). This README distinguishes
+> **Status:** working MVP. `./mvnw verify` is green. This README distinguishes
 > ✅ *verified* functionality from 🟡 *partial* and ⛔ *planned* work; see
 > [docs/architecture.md](docs/architecture.md).
 
@@ -26,8 +26,12 @@ so you can change transformation logic without redeploying.
   retained on failure, thread-safe concurrent reads.
 - ✅ Genuine Quarkus extension (runtime + deployment), CDI injection, `@OttlFunction`, `quarkus.ottl.*`
   config, and a working REST example.
+- ✅ **Language Server (LSP4J)** with real diagnostics, completion, hover and signature help, served
+  over a **Quarkus WebSocket** transport, plus a **Vue 3 / Quasar / Monaco** rule editor — all reusing
+  the real parser, compiler and type registry (no duplicated schema). See
+  [docs/language-server.md](docs/language-server.md).
 - 🟡 JMH benchmarks skeleton.
-- ⛔ OpenTelemetry pdata contexts, native-image verification (architecture is native-ready — see below).
+- ⛔ OpenTelemetry pdata contexts.
 
 ## Quick start
 
@@ -119,9 +123,10 @@ quarkus.ottl.max-source-length=10000
 ./mvnw -pl examples/quarkus-example -am quarkus:dev
 ```
 Endpoints:
-- `POST /orders/transform` — apply the active rules to an order (JSON).
-- `PUT /rules/{id}` — validate, compile and activate a rule (body = OTTL source, `text/plain`).
-- `GET /rules/{id}` — return the active rule and version.
+- `POST /orders/transform` — apply the active rules to an order (JSON record).
+- `PUT /rules/{id}` / `GET /rules/{id}` — activate / read the order rule (body = OTTL source, `text/plain`).
+- `POST /customers/transform` + `PUT|GET /customers/rules` — mutable JavaBean (POJO) example.
+- `POST /shipments/transform` + `PUT|GET /shipments/rules` — nested record (`shipment.address.city`) example.
 
 Demonstrate a runtime rule change (no restart):
 ```bash
@@ -168,12 +173,53 @@ Rule authors are treated as **less trusted** than application developers:
 
 ## Native image
 
-The architecture avoids runtime scanning and dynamic classes and registers reflection/services at
-build time, so it is **native-ready**. A native binary was **not** built/verified here (no
-GraalVM/Mandrel available), so native support is not claimed. To try it:
-```bash
-./mvnw -pl examples/quarkus-example -am -Dnative verify
+The extension is **GraalVM/Mandrel native-image compatible**, and the example app has been built and
+verified as a native executable. Rules stay fully editable and recompilable **at runtime** inside the
+native binary — only the *accessible Java types* are fixed at build time.
+
+Register a domain type with `@OttlAccessible`; the extension generates a reflection-free property
+accessor for it at build time (records → COPY via the canonical constructor; POJOs → MUTATE via
+setters) and wires an immutable accessor registry — **no runtime reflection** for property access:
+
+```java
+@OttlAccessible
+public record Order(String id, BigDecimal amount, String status, String priority) {}
 ```
+
+In strict (native) mode the compiler validates every rule path against the registry, so rules
+referencing unknown types/properties/functions are rejected before activation.
+
+Build the native executable (container build needs Docker/Podman; drop the flag if you have a local
+Mandrel/GraalVM toolchain):
+```bash
+./mvnw verify -Dnative -Dquarkus.native.container-build=true -pl examples/quarkus-example -am
+```
+
+This runs the `@QuarkusIntegrationTest` suite (`OttlNativeIT`) against the **actual native binary**,
+covering runtime rule compilation, hot swapping, POJO/record/nested transforms, concurrency, and
+security rejections. See [docs/native-image-architecture.md](docs/native-image-architecture.md) for
+the full build-time vs. runtime design.
+
+## Language server & rule editor
+
+An Eclipse **LSP4J** language server provides real diagnostics, completion (including nested Java
+property navigation), hover and signature help by reusing the actual OTTL parser, compiler and type
+registry — the language is **not** reimplemented in JavaScript. It is served over a **Quarkus
+WebSocket** (`ws://localhost:8080/ottl/lsp`, one isolated session per client, no stdio framing), and a
+small **Vue 3 / Quasar / Monaco** app consumes it with `monaco-languageclient`.
+
+```bash
+# backend (REST + LSP WebSocket)
+./mvnw -pl examples/quarkus-example quarkus:dev
+
+# front end (Vue/Quasar/Monaco) on :5173, proxying REST + WS to :8080
+cd examples/ottl-editor && npm install && npm run dev   # open http://localhost:5173
+```
+
+The editor lists runtime rules, offers a context/sample-input panel, and can **validate**, **test**
+(run against sample JSON) and **activate** rules through dev-only `/editor/*` endpoints that reuse the
+existing `RuleManager`s. A Playwright e2e test covers the full flow. For architecture, native-image
+notes and production security hardening, see [docs/language-server.md](docs/language-server.md).
 
 ## Benchmarks
 
@@ -189,6 +235,13 @@ The repository is configured for Cursor Agent with the official Quarkus Agent MC
 (`.cursor/mcp.json`); see [.cursor/rules](.cursor/rules) for project conventions and how to verify MCP
 connectivity.
 
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for build/test instructions and the
+architecture constraints to respect, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Please report
+security issues privately per [SECURITY.md](SECURITY.md).
+
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE) and the [NOTICE](NOTICE) file. Third-party dependency
+licenses are summarized in [docs/third-party-licenses.md](docs/third-party-licenses.md).

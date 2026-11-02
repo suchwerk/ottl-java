@@ -30,6 +30,7 @@
         <!-- Dependency versions (core modules deliberately avoid the Quarkus BOM) -->
         <quarkus.platform.version>3.40.1</quarkus.platform.version>
         <jackson.version>2.18.2</jackson.version>
+        <lsp4j.version>0.23.1</lsp4j.version>
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.26.3</assertj.version>
 
@@ -49,7 +50,9 @@
         <module>ottl-context-bean</module>
         <module>ottl-context-jackson</module>
         <module>ottl-context-otel</module>
+        <module>ottl-language-server</module>
         <module>quarkus-ottl</module>
+        <module>ottl-lsp-quarkus</module>
         <module>examples/quarkus-example</module>
         <module>ottl-conformance-tests</module>
         <module>ottl-benchmarks</module>
@@ -103,12 +106,32 @@
                 <artifactId>quarkus-ottl-deployment</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>io.ottl</groupId>
+                <artifactId>ottl-language-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.ottl</groupId>
+                <artifactId>ottl-lsp-quarkus</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- Third-party -->
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-databind</artifactId>
                 <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.lsp4j</groupId>
+                <artifactId>org.eclipse.lsp4j</artifactId>
+                <version>${lsp4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.lsp4j</groupId>
+                <artifactId>org.eclipse.lsp4j.jsonrpc</artifactId>
+                <version>${lsp4j.version}</version>
             </dependency>
 
             <!-- Test -->

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.ottl</groupId>
+        <artifactId>ottl-java-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ottl-language-server</artifactId>
+    <name>OTTL Java :: Language Server (core)</name>
+    <description>LSP4J-based OTTL Language Server. Reuses the OTTL parser, compiler and the same type
+        and function registries as the engine for diagnostics, completion, hover and signature help.
+        Has no dependency on Quarkus or any transport.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.ottl</groupId>
+            <artifactId>ottl-language</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.ottl</groupId>
+            <artifactId>ottl-engine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a problem in ottl-java
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal OTTL rule, input, and the module/API used if possible.
+      placeholder: |
+        1. Rule: set(order.priority, "HIGH") where order.amount > 1000
+        2. Input: { "amount": 1500, ... }
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Release version or git commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Engine / language
+        - Quarkus extension
+        - Language server (LSP)
+        - Editor (Vue/Quasar/Monaco)
+        - Native image
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: JDK version, OS, JVM vs native, browser (for the editor).
+    validations:
+      required: false

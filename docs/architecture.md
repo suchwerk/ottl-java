@@ -34,10 +34,16 @@ ottl-context-jackson    ✅ PropertyResolver for Jackson JsonNode
 ottl-context-otel       ⛔ skeleton for OpenTelemetry pdata
 quarkus-ottl/runtime    ✅ @OttlFunction, config, recorder, CDI producers
 quarkus-ottl/deployment ✅ build steps: feature, function discovery, synthetic engine bean, native reg.
-examples/quarkus-example✅ REST app demonstrating CDI + runtime rule replacement
+ottl-language-server    ✅ LSP4J core: diagnostics/completion/hover/signatures, shared type metadata
+                            (reuses lexer/parser + registries; no Quarkus, no frontend deps)
+ottl-lsp-quarkus        ✅ Quarkus WebSocket (WebSockets-Next) JSON-RPC transport, per-session LSP
+examples/quarkus-example✅ REST app: CDI + runtime rule replacement + dev-only editor API + /ottl/lsp
+examples/ottl-editor    ✅ Vue 3 / Quasar / Vite / Monaco editor (monaco-languageclient over WS)
 ottl-conformance-tests  ✅ OTTL-standard vs Java-profile tests (kept in separate packages)
 ottl-benchmarks         🟡 JMH micro-benchmarks (compile vs apply)
 ```
+
+See [language-server.md](language-server.md) for the LSP / editor architecture.
 
 The **core engine never depends on Quarkus**. Quarkus lives entirely in `quarkus-ottl/*` and the example.
 

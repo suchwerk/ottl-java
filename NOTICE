@@ -1,0 +1,33 @@
+ottl-java
+Copyright The OTTL Java Authors
+
+This product is licensed under the Apache License, Version 2.0 (the "License");
+you may not use this project except in compliance with the License. A copy of the
+License is provided in the LICENSE file.
+
+------------------------------------------------------------------------------
+Third-party software
+------------------------------------------------------------------------------
+
+This product depends on third-party software distributed under their own
+licenses. A summary of notable dependencies and how to regenerate a full report
+is provided in docs/third-party-licenses.md. Notable dependencies include:
+
+  - Eclipse LSP4J .......................... EPL-2.0 OR EDL-1.0 (BSD-3-Clause)
+  - Google Gson (via Eclipse LSP4J) ........ Apache-2.0
+  - Quarkus ................................ Apache-2.0
+  - Jackson ................................ Apache-2.0
+  - JUnit 5 (test) ......................... EPL-2.0
+  - AssertJ (test) ......................... Apache-2.0
+  - REST Assured (test) .................... Apache-2.0
+
+Front end (examples/ottl-editor), build/test-time only:
+
+  - Vue, Quasar, @quasar/extras ............ MIT
+  - Monaco Editor .......................... MIT
+  - monaco-languageclient, vscode-ws-jsonrpc MIT
+  - @codingame/monaco-vscode-api packages .. MIT
+  - Vite, vue-tsc, sass-embedded ........... MIT
+  - TypeScript, Playwright ................. Apache-2.0
+
+All marks and product names are the property of their respective owners.

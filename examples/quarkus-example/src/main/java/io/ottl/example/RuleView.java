@@ -4,6 +4,9 @@
  */
 package io.ottl.example;
 
-/** REST view of an active rule. */
+import io.quarkus.runtime.annotations.RegisterForReflection;
+
+/** REST view of an active rule. Registered for reflection so Jackson can serialize it natively. */
+@RegisterForReflection
 public record RuleView(String id, String source, int version) {
 }

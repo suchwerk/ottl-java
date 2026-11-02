@@ -1,0 +1,54 @@
+name: Native & E2E
+
+# Heavy checks (native image build + browser e2e). Run on demand or weekly, not on every PR.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1'  # Mondays 04:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native image + native ITs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Native build + native integration tests
+        run: ./mvnw -B --no-transfer-progress -pl examples/quarkus-example -am verify -Dnative
+
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Install engine + LSP into local repo
+        run: ./mvnw -B --no-transfer-progress -pl examples/quarkus-example -am install -DskipTests
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: examples/ottl-editor/package-lock.json
+      - name: Install front-end deps
+        working-directory: examples/ottl-editor
+        run: npm ci
+      - name: Install Playwright browser
+        working-directory: examples/ottl-editor
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e (starts Quarkus dev + Vite)
+        working-directory: examples/ottl-editor
+        run: npm run test:e2e

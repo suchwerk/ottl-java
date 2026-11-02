@@ -7,12 +7,18 @@ package io.ottl;
 import io.ottl.function.FunctionRegistry;
 import io.ottl.function.OttlFunction;
 import io.ottl.internal.CompiledProgram;
+import io.ottl.internal.SemanticValidator;
 import io.ottl.internal.Validator;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.parser.OttlParseException;
 import io.ottl.lang.parser.Parser;
+import io.ottl.spi.AccessorBackedResolver;
+import io.ottl.spi.PropertyAccessorRegistry;
 import io.ottl.spi.PropertyResolver;
 import io.ottl.spi.ResolverRegistry;
+
+import java.util.Collection;
+import java.util.Map;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -41,19 +47,28 @@ public final class OttlEngine {
     private final FunctionRegistry functions;
     private final OttlLimits limits;
     private final Validator validator;
+    private final PropertyAccessorRegistry accessorRegistry;
+    private final boolean strictTypes;
+    private final SemanticValidator semanticValidator;
 
     private OttlEngine(Builder b) {
         this.profile = b.profile;
         this.defaultMode = b.defaultMode;
         this.contextNameOverride = b.contextName;
         this.limits = b.limits;
+        this.accessorRegistry = b.accessorRegistry;
+        this.strictTypes = b.strictTypes;
 
         List<PropertyResolver> allResolvers = new ArrayList<>(b.resolvers);
+        if (accessorRegistry != null) {
+            allResolvers.add(new AccessorBackedResolver(accessorRegistry));
+        }
         if (b.loadDefaults) {
             ServiceLoader.load(PropertyResolver.class).forEach(allResolvers::add);
         }
         allResolvers.sort(Comparator.comparingInt(PropertyResolver::priority));
         this.resolvers = new ResolverRegistry(allResolvers);
+        this.semanticValidator = accessorRegistry != null ? new SemanticValidator(accessorRegistry) : null;
 
         FunctionRegistry.Builder fnBuilder = FunctionRegistry.builder();
         if (b.loadDefaults) {
@@ -86,6 +101,7 @@ public final class OttlEngine {
             throw new OttlCompilationException("Parse error: " + e.getMessage(), e);
         }
         validator.validate(script);
+        semanticValidate(type, contextName, script);
 
         ExecutionMode mode = type.isRecord() ? ExecutionMode.COPY : defaultMode;
         for (PropertyResolver r : resolvers.resolvers()) {
@@ -110,6 +126,25 @@ public final class OttlEngine {
         } catch (OttlParseException e) {
             throw new OttlCompilationException("Parse error: " + e.getMessage(), e);
         }
+    }
+
+    private void semanticValidate(Class<?> type, String contextName, OttlScript script) {
+        if (!strictTypes || semanticValidator == null) {
+            return;
+        }
+        if (accessorRegistry.contains(type)) {
+            semanticValidator.validate(type, contextName, script);
+        } else if (!isDynamicType(type)) {
+            throw new OttlCompilationException(
+                    "Type " + type.getName() + " is not registered as @OttlAccessible");
+        }
+    }
+
+    private static boolean isDynamicType(Class<?> type) {
+        return Map.class.isAssignableFrom(type)
+                || Collection.class.isAssignableFrom(type)
+                || type == Object.class
+                || type.getName().startsWith("com.fasterxml.jackson.");
     }
 
     private String defaultContextName(Class<?> type) {
@@ -139,6 +174,14 @@ public final class OttlEngine {
         return limits;
     }
 
+    public PropertyAccessorRegistry accessorRegistry() {
+        return accessorRegistry;
+    }
+
+    public boolean strictTypes() {
+        return strictTypes;
+    }
+
     /** Fluent builder for {@link OttlEngine}. */
     public static final class Builder {
         private OttlProfile profile = OttlProfile.STANDARD;
@@ -148,6 +191,8 @@ public final class OttlEngine {
         private final List<OttlFunction> functions = new ArrayList<>();
         private OttlLimits limits = OttlLimits.defaults();
         private boolean loadDefaults = true;
+        private PropertyAccessorRegistry accessorRegistry;
+        private boolean strictTypes;
 
         public Builder profile(OttlProfile profile) {
             this.profile = profile;
@@ -196,6 +241,24 @@ public final class OttlEngine {
          */
         public Builder loadDefaults(boolean loadDefaults) {
             this.loadDefaults = loadDefaults;
+            return this;
+        }
+
+        /**
+         * Register build-time generated property accessors. When set, an {@link AccessorBackedResolver}
+         * is added automatically (highest priority) so approved domain types resolve without reflection.
+         */
+        public Builder accessorRegistry(PropertyAccessorRegistry accessorRegistry) {
+            this.accessorRegistry = accessorRegistry;
+            return this;
+        }
+
+        /**
+         * Enable strict type checking: rules are validated against the accessor registry at compile
+         * time and rules referencing unknown types/properties are rejected. Intended for native mode.
+         */
+        public Builder strictTypes(boolean strictTypes) {
+            this.strictTypes = strictTypes;
             return this;
         }
 

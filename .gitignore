@@ -9,3 +9,10 @@ target/
 *.log
 dependency-reduced-pom.xml
 .DS_Store
+
+# Node / front-end build artifacts (examples/ottl-editor)
+node_modules/
+dist/
+test-results/
+playwright-report/
+.playwright/

@@ -1,0 +1,39 @@
+{
+  "name": "ottl-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Vue 3 / Quasar / Monaco editor for OTTL rules, backed by the OTTL language server over WebSocket.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "@codingame/monaco-vscode-editor-api": "^37.6.0",
+    "@codingame/monaco-vscode-files-service-override": "^37.6.0",
+    "@quasar/extras": "^1.16.17",
+    "monaco-languageclient": "^11.0.3",
+    "quasar": "^2.17.7",
+    "vscode": "npm:@codingame/monaco-vscode-extension-api@^37.6.0",
+    "vscode-ws-jsonrpc": "^4.0.3",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@codingame/monaco-vscode-rollup-vsix-plugin": "^37.6.0",
+    "@playwright/test": "^1.49.1",
+    "@quasar/vite-plugin": "^1.9.0",
+    "@types/node": "^22.10.5",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "sass-embedded": "^1.83.4",
+    "typescript": "~5.6.3",
+    "vite": "^6.0.7",
+    "vue-tsc": "^2.2.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "@parcel/watcher@2.6.0": true
+  }
+}
