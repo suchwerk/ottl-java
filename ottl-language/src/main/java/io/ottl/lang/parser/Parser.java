@@ -4,9 +4,12 @@
  */
 package io.ottl.lang.parser;
 
+import io.ottl.lang.OttlDialect;
+import io.ottl.lang.ast.Block;
 import io.ottl.lang.ast.ComparisonOperator;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
+import io.ottl.lang.ast.IfStatement;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
@@ -25,7 +28,11 @@ import java.util.Optional;
  *
  * <pre>
  * script      := item*
- * item        := whereBlock | statement
+ * item        := block | ifStatement | whereBlock | statement
+ * block       := "{" item* "}"                                 # OttlDialect.EXTENDED
+ * ifStatement := "if" condition block
+ *                ("else" "if" condition block)*
+ *                ("else" block)?                               # OttlDialect.EXTENDED
  * whereBlock  := "where" condition "{" item* "}"
  * statement   := functionCall ("where" condition)?
  * condition   := orExpr
@@ -36,19 +43,54 @@ import java.util.Optional;
  * value       := literal | list | functionCall | path
  * path        := IDENT ("." IDENT | "[" key "]")*
  * </pre>
+ *
+ * <p>{@code if} and {@code else} are statement keywords in {@link OttlDialect#EXTENDED}. They stay
+ * ordinary identifiers in paths ({@code order.if}) and, in the {@link OttlDialect#OTTL} dialect,
+ * {@code if(...)} remains an editor invocation. {@code where(...)} is always an editor invocation.
  */
 public final class Parser {
 
+    /**
+     * Hard ceiling on {@code where}, block, and {@code if} nesting. The parser refuses to recurse
+     * past this even if a caller asks for more, so a hostile script cannot overflow the stack.
+     */
+    public static final int MAX_NESTING = 64;
+
     private final List<Token> tokens;
+    private final OttlDialect dialect;
+    private final int maxNesting;
     private int index;
+    private int depth;
 
     public Parser(List<Token> tokens) {
-        this.tokens = tokens;
+        this(tokens, OttlDialect.OTTL, MAX_NESTING);
     }
 
-    /** Parse a full script. */
+    public Parser(List<Token> tokens, OttlDialect dialect, int maxNesting) {
+        this.tokens = tokens;
+        this.dialect = dialect == null ? OttlDialect.OTTL : dialect;
+        if (maxNesting < 1) {
+            throw new IllegalArgumentException("maxNesting must be positive");
+        }
+        this.maxNesting = Math.min(maxNesting, MAX_NESTING);
+    }
+
+    /** Parse a full script in the {@link OttlDialect#OTTL} dialect. */
     public static OttlScript parse(String source) {
-        return new Parser(Lexer.tokenize(source)).parseScript();
+        return parse(source, OttlDialect.OTTL);
+    }
+
+    /** Parse a full script in {@code dialect}. Nesting is limited to {@link #MAX_NESTING}. */
+    public static OttlScript parse(String source, OttlDialect dialect) {
+        return parse(source, dialect, MAX_NESTING);
+    }
+
+    /**
+     * Parse a full script. {@code maxNesting} is the configured complexity limit; values above
+     * {@link #MAX_NESTING} are clamped.
+     */
+    public static OttlScript parse(String source, OttlDialect dialect, int maxNesting) {
+        return new Parser(Lexer.tokenize(source), dialect, maxNesting).parseScript();
     }
 
     /** Parse a single OTTL statement (convenience for tests and single-rule compilation). */
@@ -70,10 +112,42 @@ public final class Parser {
     // ----- statements -----
 
     private ScriptItem item() {
+        if (check(TokenType.RBRACE)) {
+            throw error(peek(), "Unexpected '}'");
+        }
+        if (checkKeyword("else")) {
+            if (dialect != OttlDialect.EXTENDED) {
+                throw extended("if/else");
+            }
+            throw error(peek(), "Unexpected 'else' without a preceding 'if'");
+        }
+        if (check(TokenType.LBRACE)) {
+            if (dialect != OttlDialect.EXTENDED) {
+                throw extended("block");
+            }
+            return block(true);
+        }
+        if (startsIf()) {
+            if (dialect != OttlDialect.EXTENDED) {
+                throw extended("if/else");
+            }
+            return ifStatement();
+        }
         if (isWhereBlock()) {
             return whereBlock();
         }
         return statement();
+    }
+
+    /**
+     * {@code if} starts a conditional in the extended dialect. In the OTTL dialect, {@code if(...)}
+     * remains an editor call and any other {@code if} is the extended form, which is rejected.
+     */
+    private boolean startsIf() {
+        if (!checkKeyword("if")) {
+            return false;
+        }
+        return dialect == OttlDialect.EXTENDED || !nextIs(1, TokenType.LPAREN);
     }
 
     /** {@code where} followed by a condition and a block. {@code where(...)} stays an editor call. */
@@ -83,14 +157,82 @@ public final class Parser {
 
     private WhereBlock whereBlock() {
         Token whereTok = advance();
-        Condition condition = condition();
-        expect(TokenType.LBRACE, "'{' to open where block");
-        List<ScriptItem> body = new ArrayList<>();
-        while (!check(TokenType.RBRACE) && !check(TokenType.EOF)) {
-            body.add(item());
+        enter(whereTok);
+        try {
+            Condition condition = condition();
+            expect(TokenType.LBRACE, "'{' to open where block");
+            List<ScriptItem> body = new ArrayList<>();
+            while (!check(TokenType.RBRACE) && !check(TokenType.EOF)) {
+                body.add(item());
+            }
+            expect(TokenType.RBRACE, "'}' to close where block");
+            return new WhereBlock(condition, body, whereTok.line(), whereTok.column());
+        } finally {
+            depth--;
         }
-        expect(TokenType.RBRACE, "'}' to close where block");
-        return new WhereBlock(condition, body, whereTok.line(), whereTok.column());
+    }
+
+    /**
+     * @param nest when {@code true}, the block itself consumes one nesting level. The braces that
+     *             belong to {@code if} or {@code else} do not: the {@code if} already counted.
+     */
+    private Block block(boolean nest) {
+        Token brace = expect(TokenType.LBRACE, "'{' to open block");
+        if (nest) {
+            enter(brace);
+        }
+        try {
+            List<ScriptItem> body = new ArrayList<>();
+            while (!check(TokenType.RBRACE) && !check(TokenType.EOF)) {
+                body.add(item());
+            }
+            expect(TokenType.RBRACE, "'}' to close block");
+            return new Block(body, brace.line(), brace.column());
+        } finally {
+            if (nest) {
+                depth--;
+            }
+        }
+    }
+
+    private IfStatement ifStatement() {
+        Token ifTok = advance();
+        enter(ifTok);
+        try {
+            if (check(TokenType.LBRACE) || check(TokenType.EOF)) {
+                throw error(peek(), "Expected a condition after 'if'");
+            }
+            Condition condition = condition();
+            if (!check(TokenType.LBRACE)) {
+                throw error(peek(), "Expected '{' to open if block");
+            }
+            Block thenBlock = block(false);
+            Optional<ScriptItem> elseBranch = Optional.empty();
+            if (checkKeyword("else")) {
+                advance();
+                if (checkKeyword("if")) {
+                    elseBranch = Optional.of(ifStatement());
+                } else if (check(TokenType.LBRACE)) {
+                    elseBranch = Optional.of(block(false));
+                } else {
+                    throw error(peek(), "Expected '{' or 'if' after 'else'");
+                }
+            }
+            return new IfStatement(condition, thenBlock, elseBranch, ifTok.line(), ifTok.column());
+        } finally {
+            depth--;
+        }
+    }
+
+    private void enter(Token at) {
+        if (depth + 1 > maxNesting) {
+            throw error(at, "Nesting too deep (limit " + maxNesting + ")");
+        }
+        depth++;
+    }
+
+    private OttlParseException extended(String feature) {
+        return error(peek(), "Language feature '" + feature + "' requires OttlDialect.EXTENDED");
     }
 
     private Statement statement() {

@@ -4,6 +4,9 @@
  */
 package io.ottl.lsp.analysis;
 
+import io.ottl.lang.OttlDialect;
+import io.ottl.lang.ast.Block;
+import io.ottl.lang.ast.IfStatement;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
@@ -90,7 +93,7 @@ public final class Analyzer {
 
         OttlScript script;
         try {
-            script = Parser.parse(text);
+            script = Parser.parse(text, metadata.dialect(), metadata.maxNesting());
         } catch (OttlParseException e) {
             diagnostics.add(error(LspText.pointRange(e.line(), e.column(), 1), stripPrefix(e.getMessage())));
             return diagnostics; // cannot do semantic analysis on unparseable source
@@ -104,9 +107,18 @@ public final class Analyzer {
 
     private static void collectEditors(List<ScriptItem> items, Set<Long> out) {
         for (ScriptItem item : items) {
-            switch (item) {
-                case Statement s -> out.add(posKey(s.line(), s.column()));
-                case WhereBlock block -> collectEditors(block.body(), out);
+            collectEditors(item, out);
+        }
+    }
+
+    private static void collectEditors(ScriptItem item, Set<Long> out) {
+        switch (item) {
+            case Statement s -> out.add(posKey(s.line(), s.column()));
+            case WhereBlock block -> collectEditors(block.body(), out);
+            case Block block -> collectEditors(block.statements(), out);
+            case IfStatement branch -> {
+                collectEditors(branch.thenBlock().statements(), out);
+                branch.elseBranch().ifPresent(other -> collectEditors(other, out));
             }
         }
     }
@@ -165,7 +177,7 @@ public final class Analyzer {
                         boolean editor = editorPositions.contains(posKey(t.line(), t.column()));
                         frames.push(new Frame(t.text(), editor));
                         i += 2; // consume IDENT and LPAREN
-                    } else if (KEYWORDS.contains(t.text())) {
+                    } else if (KEYWORDS.contains(t.text()) || isControlKeyword(t.text())) {
                         i++;
                     } else {
                         boolean write = isWriteTarget(frames);
@@ -346,7 +358,7 @@ public final class Analyzer {
                     items.add(functionItem(fn));
                 }
             }
-            for (String kw : COMPLETION_KEYWORDS) {
+            for (String kw : completionKeywords()) {
                 if (startsWith(kw, prefix)) {
                     items.add(keywordItem(kw));
                 }
@@ -396,8 +408,18 @@ public final class Analyzer {
             return null;
         }
         Token t = tokens.get(idx);
-        if (t.type() != TokenType.IDENT || KEYWORDS.contains(t.text())) {
+        if (t.type() != TokenType.IDENT) {
             return null;
+        }
+        boolean fieldName = idx > 0 && tokens.get(idx - 1).type() == TokenType.DOT;
+        if (!fieldName) {
+            String keyword = keywordDoc(t.text());
+            if (keyword != null) {
+                return markdownHover(keyword, LspText.tokenRange(t));
+            }
+            if (KEYWORDS.contains(t.text())) {
+                return null;
+            }
         }
         // Function?
         if (next(tokens, idx).type() == TokenType.LPAREN) {
@@ -659,6 +681,32 @@ public final class Analyzer {
         item.setInsertTextFormat(InsertTextFormat.Snippet);
         item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, functionHoverText(fn)));
         return item;
+    }
+
+    private static boolean isControlKeyword(String word) {
+        return "if".equals(word) || "else".equals(word);
+    }
+
+    private List<String> completionKeywords() {
+        List<String> keywords = new ArrayList<>(COMPLETION_KEYWORDS);
+        if (metadata.dialect() == OttlDialect.EXTENDED) {
+            keywords.add("if");
+            keywords.add("else");
+        }
+        return keywords;
+    }
+
+    private static String keywordDoc(String word) {
+        return switch (word) {
+            case "where" -> "Guard. `statement where condition` runs one editor. "
+                    + "`where condition { ... }` evaluates the condition once, then runs the block.";
+            case "and", "or" -> "Boolean operator. `and` and `or` short-circuit.";
+            case "not" -> "Negates a condition.";
+            case "if" -> "Extended dialect. `if condition { ... } else if condition { ... } else { ... }` "
+                    + "runs only the first matching branch. Requires `OttlDialect.EXTENDED`.";
+            case "else" -> "Extended dialect. Follows an `if` block, either as `else { ... }` or `else if`.";
+            default -> null;
+        };
     }
 
     private static CompletionItem keywordItem(String kw) {

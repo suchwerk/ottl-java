@@ -5,7 +5,8 @@
 package io.ottl;
 
 /**
- * Selects the behavioral profile of the engine.
+ * Selects the behavioral profile of the engine. This is not the language dialect: syntax extensions
+ * such as blocks and {@code if}/{@code else} are selected with {@link io.ottl.lang.OttlDialect}.
  *
  * <ul>
  *   <li>{@link #STANDARD} — OTTL-compatible behavior intended to match the reference language.</li>

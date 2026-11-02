@@ -4,6 +4,7 @@
  */
 package io.ottl.lsp;
 
+import io.ottl.lang.OttlDialect;
 import io.ottl.lsp.analysis.Analyzer;
 import io.ottl.lsp.analysis.TextDocument;
 import org.eclipse.lsp4j.CompletionItem;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OttlAnalyzerTest {
 
     private final Analyzer analyzer = new Analyzer(TestMetadata.build());
+    private final Analyzer extended = new Analyzer(TestMetadata.build().withDialect(OttlDialect.EXTENDED));
 
     private static final String HEADER = "# context: Order\n";
 
@@ -30,7 +32,8 @@ class OttlAnalyzerTest {
     }
 
     private Position endOf(String rule) {
-        return new Position(1, rule.length());
+        String[] lines = rule.split("\n", -1);
+        return new Position(lines.length, lines[lines.length - 1].length());
     }
 
     // ----- diagnostics -----
@@ -97,6 +100,64 @@ class OttlAnalyzerTest {
                 }
                 """));
         assertThat(readOnly).anyMatch(x -> x.getMessage().contains("not writable"));
+    }
+
+    @Test
+    void extendedBlocksReportSyntaxAndNestedProperties() {
+        assertThat(analyzer.diagnose(doc("""
+                if order.amount > 10000 {
+                    set(order.status, "REVIEW")
+                }
+                """)))
+                .anyMatch(d -> d.getMessage().contains("OttlDialect.EXTENDED"));
+
+        assertThat(extended.diagnose(doc("""
+                if order.amount > 10000 {
+                    set(order.status, "REVIEW")
+                    if order.customer.name == "Ada" {
+                        set(order.priority, "HIGH")
+                    } else {
+                        set(order.priority, "LOW")
+                    }
+                }
+                """))).isEmpty();
+
+        assertThat(extended.diagnose(doc("""
+                if order.amount > 10000 {
+                    set(order.nope, "X")
+                } else {
+                    set(order.amount, 1)
+                }
+                """)))
+                .anyMatch(d -> d.getMessage().contains("Unknown property 'nope'"))
+                .anyMatch(d -> d.getMessage().contains("not writable"));
+
+        assertThat(extended.diagnose(doc("if order.amount > 1 { set(order.status, \"X\")")))
+                .anyMatch(d -> d.getMessage().contains("'}'"));
+        assertThat(extended.diagnose(doc("else { set(order.status, \"X\") }")))
+                .anyMatch(d -> d.getMessage().contains("Unexpected 'else'"));
+        assertThat(extended.diagnose(doc("if order.amount > 1 set(order.status, \"X\")")))
+                .anyMatch(d -> d.getMessage().contains("Expected '{'"));
+    }
+
+    @Test
+    void completionInsideAConditionalBlockIncludesPropertiesAndKeywords() {
+        String inside = "if order.amount > 10000 {\n    set(order.";
+        assertThat(extended.complete(doc(inside), endOf(inside)).getItems().stream()
+                .map(CompletionItem::getLabel).toList())
+                .contains("status", "priority", "customer");
+        assertThat(labels("whe")).doesNotContain("if", "else");
+        List<String> extendedLabels = extended.complete(doc(""), endOf("")).getItems().stream()
+                .map(CompletionItem::getLabel).toList();
+        assertThat(extendedLabels).contains("if", "else", "where");
+    }
+
+    @Test
+    void hoverOnIfDescribesTheExtendedConditional() {
+        String rule = "if order.amount > 1 {\n    set(order.status, \"X\")\n}";
+        Hover hover = extended.hover(doc(rule), new Position(1, 1));
+        assertThat(hover).isNotNull();
+        assertThat(hover.getContents().getRight().getValue()).contains("if condition");
     }
 
     @Test

@@ -88,6 +88,6 @@ class CompilationErrorTest {
                 """;
         assertThatThrownBy(() -> limited.compile(src, Order.class))
                 .isInstanceOf(OttlCompilationException.class)
-                .hasMessageContaining("where-block nesting too deep");
+                .hasMessageContaining("Nesting too deep");
     }
 }

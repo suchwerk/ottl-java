@@ -8,8 +8,10 @@ import io.ottl.OttlCompilationException;
 import io.ottl.OttlLimits;
 import io.ottl.function.FunctionRegistry;
 import io.ottl.function.OttlFunction;
+import io.ottl.lang.ast.Block;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
+import io.ottl.lang.ast.IfStatement;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
@@ -43,31 +45,71 @@ public final class Validator {
     private int countStatements(List<ScriptItem> items) {
         int count = 0;
         for (ScriptItem item : items) {
-            switch (item) {
-                case Statement ignored -> count++;
-                case WhereBlock block -> count += countStatements(block.body());
-            }
+            count += countStatements(item);
         }
         return count;
     }
 
+    private int countStatements(ScriptItem item) {
+        return switch (item) {
+            case Statement ignored -> 1;
+            case WhereBlock block -> countStatements(block.body());
+            case Block block -> countStatements(block.statements());
+            case IfStatement branch -> {
+                int count = countStatements(branch.thenBlock().statements());
+                if (branch.elseBranch().isPresent()) {
+                    ScriptItem other = branch.elseBranch().get();
+                    count += other instanceof Block elseBlock
+                            ? countStatements(elseBlock.statements())
+                            : countStatements(other);
+                }
+                yield count;
+            }
+        };
+    }
+
     private void validateItems(List<ScriptItem> items, int blockDepth) {
         for (ScriptItem item : items) {
-            switch (item) {
-                case Statement stmt -> {
-                    validateCall(stmt.editor(), 1);
-                    stmt.condition().ifPresent(this::validateCondition);
-                }
-                case WhereBlock block -> {
-                    if (blockDepth + 1 > limits.maxCallDepth()) {
-                        throw new OttlCompilationException(
-                                "where-block nesting too deep (limit " + limits.maxCallDepth() + ")");
+            validateItem(item, blockDepth);
+        }
+    }
+
+    private void validateItem(ScriptItem item, int blockDepth) {
+        switch (item) {
+            case Statement stmt -> {
+                validateCall(stmt.editor(), 1);
+                stmt.condition().ifPresent(this::validateCondition);
+            }
+            case WhereBlock block -> {
+                int here = nested(blockDepth);
+                validateCondition(block.condition());
+                validateItems(block.body(), here);
+            }
+            case Block block -> {
+                int here = nested(blockDepth);
+                validateItems(block.statements(), here);
+            }
+            case IfStatement branch -> {
+                int here = nested(blockDepth);
+                validateCondition(branch.condition());
+                validateItems(branch.thenBlock().statements(), here);
+                branch.elseBranch().ifPresent(other -> {
+                    if (other instanceof Block elseBlock) {
+                        validateItems(elseBlock.statements(), here);
+                    } else {
+                        validateItem(other, here);
                     }
-                    validateCondition(block.condition());
-                    validateItems(block.body(), blockDepth + 1);
-                }
+                });
             }
         }
+    }
+
+    private int nested(int blockDepth) {
+        int here = blockDepth + 1;
+        if (here > limits.maxCallDepth()) {
+            throw new OttlCompilationException("Nesting too deep (limit " + limits.maxCallDepth() + ")");
+        }
+        return here;
     }
 
     private void validateCondition(Condition condition) {

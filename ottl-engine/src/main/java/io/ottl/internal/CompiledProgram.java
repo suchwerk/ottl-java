@@ -11,7 +11,9 @@ import io.ottl.function.Evaluator;
 import io.ottl.function.ExecutionContext;
 import io.ottl.function.FunctionRegistry;
 import io.ottl.function.OttlFunction;
+import io.ottl.lang.ast.Block;
 import io.ottl.lang.ast.Expression;
+import io.ottl.lang.ast.IfStatement;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
@@ -52,23 +54,35 @@ public final class CompiledProgram<T> implements OttlProgram<T> {
     @SuppressWarnings("unchecked")
     public T apply(T input) {
         ExecutionContext ctx = new ExecutionContext(input, contextName, resolvers, functions, mode, enums);
-        execute(ctx, script.statements());
+        executeItems(ctx, script.statements());
         return (T) ctx.root();
     }
 
-    private void execute(ExecutionContext ctx, List<ScriptItem> items) {
+    private void executeItems(ExecutionContext ctx, List<ScriptItem> items) {
         for (ScriptItem item : items) {
-            switch (item) {
-                case Statement stmt -> {
-                    if (stmt.condition().isEmpty()
-                            || Evaluator.evalCondition(ctx, stmt.condition().get())) {
-                        invokeEditor(ctx, stmt.editor());
-                    }
+            executeItem(ctx, item);
+        }
+    }
+
+    private void executeItem(ExecutionContext ctx, ScriptItem item) {
+        switch (item) {
+            case Statement stmt -> {
+                if (stmt.condition().isEmpty()
+                        || Evaluator.evalCondition(ctx, stmt.condition().get())) {
+                    invokeEditor(ctx, stmt.editor());
                 }
-                case WhereBlock block -> {
-                    if (Evaluator.evalCondition(ctx, block.condition())) {
-                        execute(ctx, block.body());
-                    }
+            }
+            case WhereBlock block -> {
+                if (Evaluator.evalCondition(ctx, block.condition())) {
+                    executeItems(ctx, block.body());
+                }
+            }
+            case Block block -> executeItems(ctx, block.statements());
+            case IfStatement branch -> {
+                if (Evaluator.evalCondition(ctx, branch.condition())) {
+                    executeItems(ctx, branch.thenBlock().statements());
+                } else {
+                    branch.elseBranch().ifPresent(other -> executeItem(ctx, other));
                 }
             }
         }
