@@ -78,6 +78,28 @@ class OttlAnalyzerTest {
     }
 
     @Test
+    void whereBlockValidatesPropertiesInsideTheBody() {
+        assertThat(analyzer.diagnose(doc("""
+                where order.amount > 10 {
+                    set(order.status, "REVIEW")
+                    set(order.priority, "HIGH")
+                }
+                """))).isEmpty();
+        List<Diagnostic> d = analyzer.diagnose(doc("""
+                where order.amount > 10 {
+                    set(order.nope, "X")
+                }
+                """));
+        assertThat(d).anyMatch(x -> x.getMessage().contains("Unknown property 'nope'"));
+        List<Diagnostic> readOnly = analyzer.diagnose(doc("""
+                where order.amount > 10 {
+                    set(order.amount, 1)
+                }
+                """));
+        assertThat(readOnly).anyMatch(x -> x.getMessage().contains("not writable"));
+    }
+
+    @Test
     void readingReadOnlyPropertyInConditionIsAllowed() {
         // amount is read-only, but reading it in a condition is fine.
         assertThat(analyzer.diagnose(doc("set(order.status, \"X\") where order.amount > 10"))).isEmpty();

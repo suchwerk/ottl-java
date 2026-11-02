@@ -13,7 +13,9 @@ import io.ottl.function.FunctionRegistry;
 import io.ottl.function.OttlFunction;
 import io.ottl.lang.ast.Expression;
 import io.ottl.lang.ast.OttlScript;
+import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
+import io.ottl.lang.ast.WhereBlock;
 import io.ottl.spi.ResolverRegistry;
 
 import java.util.ArrayList;
@@ -46,13 +48,26 @@ public final class CompiledProgram<T> implements OttlProgram<T> {
     @SuppressWarnings("unchecked")
     public T apply(T input) {
         ExecutionContext ctx = new ExecutionContext(input, contextName, resolvers, functions, mode);
-        for (Statement stmt : script.statements()) {
-            if (stmt.condition().isEmpty()
-                    || Evaluator.evalCondition(ctx, stmt.condition().get())) {
-                invokeEditor(ctx, stmt.editor());
+        execute(ctx, script.statements());
+        return (T) ctx.root();
+    }
+
+    private void execute(ExecutionContext ctx, List<ScriptItem> items) {
+        for (ScriptItem item : items) {
+            switch (item) {
+                case Statement stmt -> {
+                    if (stmt.condition().isEmpty()
+                            || Evaluator.evalCondition(ctx, stmt.condition().get())) {
+                        invokeEditor(ctx, stmt.editor());
+                    }
+                }
+                case WhereBlock block -> {
+                    if (Evaluator.evalCondition(ctx, block.condition())) {
+                        execute(ctx, block.body());
+                    }
+                }
             }
         }
-        return (T) ctx.root();
     }
 
     private void invokeEditor(ExecutionContext ctx, Expression.FunctionCall editor) {

@@ -8,7 +8,9 @@ import io.ottl.lang.ast.ComparisonOperator;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
 import io.ottl.lang.ast.OttlScript;
+import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
+import io.ottl.lang.ast.WhereBlock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,13 +19,14 @@ import java.util.Optional;
 /**
  * A hand-written recursive-descent parser for the OTTL subset.
  *
- * <p>Statements are self-delimiting: each statement is an editor invocation
- * ({@code name(args)}) with an optional {@code where} condition. Because every statement begins
- * with an identifier followed by {@code (}, no explicit statement terminator is required, which
- * matches how the reference OTTL implementation treats each statement as an independent unit.
+ * <p>Editor statements are self-delimiting: each one is an invocation ({@code name(args)}) with an
+ * optional trailing {@code where} condition. A {@code where} block groups several items under one
+ * condition with braces; that condition is evaluated once for the whole block.
  *
  * <pre>
- * script      := statement*
+ * script      := item*
+ * item        := whereBlock | statement
+ * whereBlock  := "where" condition "{" item* "}"
  * statement   := functionCall ("where" condition)?
  * condition   := orExpr
  * orExpr      := andExpr ("or" andExpr)*
@@ -57,14 +60,38 @@ public final class Parser {
     }
 
     public OttlScript parseScript() {
-        List<Statement> statements = new ArrayList<>();
+        List<ScriptItem> statements = new ArrayList<>();
         while (!check(TokenType.EOF)) {
-            statements.add(statement());
+            statements.add(item());
         }
         return new OttlScript(statements);
     }
 
     // ----- statements -----
+
+    private ScriptItem item() {
+        if (isWhereBlock()) {
+            return whereBlock();
+        }
+        return statement();
+    }
+
+    /** {@code where} followed by a condition and a block. {@code where(...)} stays an editor call. */
+    private boolean isWhereBlock() {
+        return checkKeyword("where") && !nextIs(1, TokenType.LPAREN);
+    }
+
+    private WhereBlock whereBlock() {
+        Token whereTok = advance();
+        Condition condition = condition();
+        expect(TokenType.LBRACE, "'{' to open where block");
+        List<ScriptItem> body = new ArrayList<>();
+        while (!check(TokenType.RBRACE) && !check(TokenType.EOF)) {
+            body.add(item());
+        }
+        expect(TokenType.RBRACE, "'}' to close where block");
+        return new WhereBlock(condition, body, whereTok.line(), whereTok.column());
+    }
 
     private Statement statement() {
         Token nameTok = peek();
@@ -73,11 +100,30 @@ public final class Parser {
         }
         Expression.FunctionCall editor = functionCall();
         Optional<Condition> where = Optional.empty();
-        if (checkKeyword("where")) {
+        // Newlines do not end a statement, so `where <condition> {` after an editor is the next
+        // block, not this statement's guard. A trailing where has no '{' after its condition.
+        if (checkKeyword("where") && !introducesWhereBlock()) {
             advance();
             where = Optional.of(condition());
         }
         return new Statement(editor, where, nameTok.line(), nameTok.column());
+    }
+
+    /** True when the current token is {@code where <condition> '{'}. Parser position is unchanged. */
+    private boolean introducesWhereBlock() {
+        if (!checkKeyword("where") || nextIs(1, TokenType.LPAREN)) {
+            return false;
+        }
+        int mark = index;
+        try {
+            advance();
+            condition();
+            return check(TokenType.LBRACE);
+        } catch (OttlParseException e) {
+            return false;
+        } finally {
+            index = mark;
+        }
     }
 
     // ----- conditions -----

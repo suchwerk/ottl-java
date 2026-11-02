@@ -11,7 +11,11 @@ import io.ottl.function.OttlFunction;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
 import io.ottl.lang.ast.OttlScript;
+import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
+import io.ottl.lang.ast.WhereBlock;
+
+import java.util.List;
 
 /**
  * Compile-time validation: enforces complexity limits and checks that every function is allowlisted
@@ -28,13 +32,41 @@ public final class Validator {
     }
 
     public void validate(OttlScript script) {
-        if (script.statements().size() > limits.maxStatements()) {
-            throw new OttlCompilationException("Too many statements: " + script.statements().size()
+        int count = countStatements(script.statements());
+        if (count > limits.maxStatements()) {
+            throw new OttlCompilationException("Too many statements: " + count
                     + " (limit " + limits.maxStatements() + ")");
         }
-        for (Statement stmt : script.statements()) {
-            validateCall(stmt.editor(), 1);
-            stmt.condition().ifPresent(this::validateCondition);
+        validateItems(script.statements(), 0);
+    }
+
+    private int countStatements(List<ScriptItem> items) {
+        int count = 0;
+        for (ScriptItem item : items) {
+            switch (item) {
+                case Statement ignored -> count++;
+                case WhereBlock block -> count += countStatements(block.body());
+            }
+        }
+        return count;
+    }
+
+    private void validateItems(List<ScriptItem> items, int blockDepth) {
+        for (ScriptItem item : items) {
+            switch (item) {
+                case Statement stmt -> {
+                    validateCall(stmt.editor(), 1);
+                    stmt.condition().ifPresent(this::validateCondition);
+                }
+                case WhereBlock block -> {
+                    if (blockDepth + 1 > limits.maxCallDepth()) {
+                        throw new OttlCompilationException(
+                                "where-block nesting too deep (limit " + limits.maxCallDepth() + ")");
+                    }
+                    validateCondition(block.condition());
+                    validateItems(block.body(), blockDepth + 1);
+                }
+            }
         }
     }
 

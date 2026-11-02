@@ -11,7 +11,7 @@ package io.ottl;
  * @param maxSourceLength maximum number of source characters
  * @param maxStatements   maximum number of statements in a script
  * @param maxPathDepth    maximum number of segments in any path
- * @param maxCallDepth    maximum nesting depth of function calls in an expression
+ * @param maxCallDepth    maximum nesting depth of function calls in an expression, and of {@code where} blocks
  */
 public record OttlLimits(int maxSourceLength, int maxStatements, int maxPathDepth, int maxCallDepth) {
 

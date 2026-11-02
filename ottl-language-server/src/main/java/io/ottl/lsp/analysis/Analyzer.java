@@ -5,7 +5,9 @@
 package io.ottl.lsp.analysis;
 
 import io.ottl.lang.ast.OttlScript;
+import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
+import io.ottl.lang.ast.WhereBlock;
 import io.ottl.lang.parser.Lexer;
 import io.ottl.lang.parser.OttlParseException;
 import io.ottl.lang.parser.Parser;
@@ -94,11 +96,18 @@ public final class Analyzer {
         }
 
         Set<Long> editorPositions = new java.util.HashSet<>();
-        for (Statement s : script.statements()) {
-            editorPositions.add(posKey(s.line(), s.column()));
-        }
+        collectEditors(script.statements(), editorPositions);
         semanticDiagnostics(tokens, context(doc), editorPositions, diagnostics);
         return diagnostics;
+    }
+
+    private static void collectEditors(List<ScriptItem> items, Set<Long> out) {
+        for (ScriptItem item : items) {
+            switch (item) {
+                case Statement s -> out.add(posKey(s.line(), s.column()));
+                case WhereBlock block -> collectEditors(block.body(), out);
+            }
+        }
     }
 
     private static long posKey(int line, int col) {

@@ -59,14 +59,18 @@ reference Go implementation does **not** use ANTLR — it uses a PEG/parser-comb
   and a smaller, obviously native-image-friendly footprint.
 - Full control over error messages with precise `line:column` positions (see `OttlParseException`).
 
-**Statements are self-delimiting**: every statement begins with `identifier(`, and a `where`
-condition is a complete boolean expression. This means no statement terminator is needed and a
-statement may wrap across lines exactly as in the task's example.
+**Statements are self-delimiting**: every editor statement begins with `identifier(`, and a
+`where` condition is a complete boolean expression. No statement terminator is needed, and a
+statement may wrap across lines. A `where` block (`where <condition> { ... }`) is an ottl-java
+extension: the condition is evaluated once, then every item in the braces runs. A trailing
+`where` on a single editor statement is unchanged.
 
 ### Grammar (implemented subset)
 
 ```
-script      := statement*
+script      := item*
+item        := whereBlock | statement
+whereBlock  := "where" condition "{" item* "}"
 statement   := functionCall ("where" condition)?
 condition   := orExpr
 orExpr      := andExpr ("or" andExpr)*

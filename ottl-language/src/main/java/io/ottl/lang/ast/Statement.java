@@ -17,5 +17,5 @@ import java.util.Optional;
  * @param column    1-based column of the editor in the source (for diagnostics)
  */
 public record Statement(Expression.FunctionCall editor, Optional<Condition> condition,
-                        int line, int column) {
+                        int line, int column) implements ScriptItem {
 }

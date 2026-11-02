@@ -54,4 +54,40 @@ class CompilationErrorTest {
                 .isInstanceOf(OttlCompilationException.class)
                 .hasMessageContaining("Too many statements");
     }
+
+    @Test
+    void statementsInsideWhereBlockCountTowardLimit() {
+        OttlEngine limited = OttlEngine.builder()
+                .profile(OttlProfile.JAVA)
+                .limits(new OttlLimits(10_000, 2, 16, 16))
+                .build();
+        String src = """
+                where order.amount > 0 {
+                    set(order.status, "A")
+                    set(order.status, "B")
+                    set(order.status, "C")
+                }
+                """;
+        assertThatThrownBy(() -> limited.compile(src, Order.class))
+                .isInstanceOf(OttlCompilationException.class)
+                .hasMessageContaining("Too many statements");
+    }
+
+    @Test
+    void whereBlockNestingIsBounded() {
+        OttlEngine limited = OttlEngine.builder()
+                .profile(OttlProfile.JAVA)
+                .limits(new OttlLimits(10_000, 100, 16, 1))
+                .build();
+        String src = """
+                where order.amount > 0 {
+                    where order.amount > 1 {
+                        set(order.status, "A")
+                    }
+                }
+                """;
+        assertThatThrownBy(() -> limited.compile(src, Order.class))
+                .isInstanceOf(OttlCompilationException.class)
+                .hasMessageContaining("where-block nesting too deep");
+    }
 }

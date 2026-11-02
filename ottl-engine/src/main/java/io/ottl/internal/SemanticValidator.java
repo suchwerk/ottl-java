@@ -8,7 +8,9 @@ import io.ottl.OttlCompilationException;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
 import io.ottl.lang.ast.OttlScript;
+import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
+import io.ottl.lang.ast.WhereBlock;
 import io.ottl.spi.PropertyAccessorRegistry;
 import io.ottl.spi.TypeMetadata;
 
@@ -28,13 +30,25 @@ public final class SemanticValidator {
     }
 
     public void validate(Class<?> rootType, String contextName, OttlScript script) {
-        for (Statement stmt : script.statements()) {
-            List<Expression> args = stmt.editor().arguments();
-            for (int i = 0; i < args.size(); i++) {
-                // By convention the first argument of set/delete_key/keep_keys is the write target.
-                validateExpression(args.get(i), rootType, contextName, i == 0);
+        validateItems(script.statements(), rootType, contextName);
+    }
+
+    private void validateItems(List<ScriptItem> items, Class<?> rootType, String contextName) {
+        for (ScriptItem item : items) {
+            switch (item) {
+                case Statement stmt -> {
+                    List<Expression> args = stmt.editor().arguments();
+                    for (int i = 0; i < args.size(); i++) {
+                        // By convention the first argument of set/delete_key/keep_keys is the write target.
+                        validateExpression(args.get(i), rootType, contextName, i == 0);
+                    }
+                    stmt.condition().ifPresent(c -> validateCondition(c, rootType, contextName));
+                }
+                case WhereBlock block -> {
+                    validateCondition(block.condition(), rootType, contextName);
+                    validateItems(block.body(), rootType, contextName);
+                }
             }
-            stmt.condition().ifPresent(c -> validateCondition(c, rootType, contextName));
         }
     }
 
