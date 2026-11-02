@@ -41,7 +41,7 @@ class OttlLspNativeIT {
 
         String body = "{\"context\":\"Order\","
                 + "\"source\":\"set(order.priority, \\\"HIGH\\\") where order.amount > 1000\","
-                + "\"input\":{\"id\":\"o-1\",\"amount\":1500,\"status\":\"NEW\",\"priority\":\"LOW\"}}";
+                + "\"input\":{\"id\":\"o-1\",\"amount\":1500,\"status\":\"PENDING\",\"priority\":\"LOW\"}}";
         given().contentType(ContentType.JSON).body(body)
                 .when().post("/editor/test")
                 .then().statusCode(200)

@@ -53,7 +53,7 @@ const props = defineProps<{
 }>();
 defineEmits<{ (e: 'update:context', value: string): void }>();
 
-const inputText = ref<string>('{\n  "id": "o-1",\n  "amount": 1500,\n  "status": "NEW",\n  "priority": "LOW"\n}');
+const inputText = ref<string>('{\n  "id": "o-1",\n  "amount": 1500,\n  "status": "PENDING",\n  "priority": "LOW"\n}');
 const result = ref<string | null>(null);
 const error = ref<string | null>(null);
 const running = ref(false);

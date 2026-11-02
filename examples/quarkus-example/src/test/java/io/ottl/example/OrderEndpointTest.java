@@ -19,16 +19,16 @@ import static org.hamcrest.Matchers.not;
 class OrderEndpointTest {
 
     private static final String HIGH_VALUE_ORDER =
-            "{\"id\":\"o-1\",\"amount\":15000,\"status\":\"NEW\",\"priority\":\"LOW\"}";
+            "{\"id\":\"o-1\",\"amount\":15000,\"status\":\"PENDING\",\"priority\":\"LOW\"}";
     private static final String LOW_VALUE_ORDER =
-            "{\"id\":\"o-2\",\"amount\":500,\"status\":\"NEW\",\"priority\":\"LOW\"}";
+            "{\"id\":\"o-2\",\"amount\":500,\"status\":\"PENDING\",\"priority\":\"LOW\"}";
 
     @Test
     void transformAppliesDefaultRuleForHighValueOrders() {
         given().contentType(ContentType.JSON).body(HIGH_VALUE_ORDER)
                 .when().post("/orders/transform")
                 .then().statusCode(200)
-                .body("status", is("REVIEW"));
+                .body("status", is("PROCESSING"));
     }
 
     @Test
@@ -36,7 +36,7 @@ class OrderEndpointTest {
         given().contentType(ContentType.JSON).body(LOW_VALUE_ORDER)
                 .when().post("/orders/transform")
                 .then().statusCode(200)
-                .body("status", is("NEW"));
+                .body("status", is("PENDING"));
     }
 
     @Test

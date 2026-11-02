@@ -35,9 +35,9 @@ import static org.hamcrest.Matchers.is;
 class OttlNativeIT {
 
     private static final String HIGH_VALUE_ORDER =
-            "{\"id\":\"o-1\",\"amount\":15000,\"status\":\"NEW\",\"priority\":\"LOW\"}";
+            "{\"id\":\"o-1\",\"amount\":15000,\"status\":\"PENDING\",\"priority\":\"LOW\"}";
     private static final String LOW_VALUE_ORDER =
-            "{\"id\":\"o-2\",\"amount\":500,\"status\":\"NEW\",\"priority\":\"LOW\"}";
+            "{\"id\":\"o-2\",\"amount\":500,\"status\":\"PENDING\",\"priority\":\"LOW\"}";
 
     // ----- Test 1: initial rule -----
 
@@ -134,14 +134,14 @@ class OttlNativeIT {
     @Test
     @Order(5)
     void recordIsCopiedImmutably() {
-        given().contentType(ContentType.TEXT).body("set(order.status, \"ARCHIVED\")")
+        given().contentType(ContentType.TEXT).body("set(order.status, OrderStatus.CANCELLED)")
                 .when().put("/rules/order-rules")
                 .then().statusCode(200);
 
         given().contentType(ContentType.JSON).body(HIGH_VALUE_ORDER)
                 .when().post("/orders/transform")
                 .then().statusCode(200)
-                .body("status", is("ARCHIVED"))
+                .body("status", is("CANCELLED"))
                 .body("id", is("o-1")) // untouched components are preserved by the canonical copy
                 .body("amount", is(15000));
     }
@@ -237,5 +237,68 @@ class OttlNativeIT {
         given().contentType(ContentType.TEXT).body("set(shipment.address.country, \"DE\")")
                 .when().put("/shipments/rules")
                 .then().statusCode(400);
+    }
+
+    // ----- Test 9: extended if/else, hot swap, and rejection of an invalid replacement -----
+
+    @Test
+    @Order(9)
+    void extendedConditionalRuleHotSwapsInsideTheNativeImage() {
+        String conditional = """
+                if order.amount > 10000 {
+                    set(order.status, OrderStatus.CANCELLED)
+                    set(order.priority, "HIGH")
+                } else {
+                    set(order.priority, "LOW")
+                }
+                """;
+        given().contentType(ContentType.TEXT).body(conditional)
+                .when().put("/rules/order-rules")
+                .then().statusCode(200);
+
+        given().contentType(ContentType.JSON).body(HIGH_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("status", is("CANCELLED"))
+                .body("priority", is("HIGH"));
+
+        given().contentType(ContentType.JSON).body(LOW_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("status", is("PENDING"))
+                .body("priority", is("LOW"));
+
+        given().contentType(ContentType.TEXT).body("""
+                if order.amount > 0 {
+                    set(order.priority, "URGENT")
+                }
+                """)
+                .when().put("/rules/order-rules")
+                .then().statusCode(200);
+
+        given().contentType(ContentType.JSON).body(LOW_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("priority", is("URGENT"));
+
+        int version = given().when().get("/rules/order-rules")
+                .then().statusCode(200).extract().path("version");
+
+        given().contentType(ContentType.TEXT).body("""
+                if order.amount > 0 {
+                    set(order.unknownProperty, "INVALID")
+                }
+                """)
+                .when().put("/rules/order-rules")
+                .then().statusCode(400);
+
+        given().when().get("/rules/order-rules")
+                .then().statusCode(200)
+                .body("version", is(version));
+
+        given().contentType(ContentType.JSON).body(LOW_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("priority", is("URGENT"));
     }
 }

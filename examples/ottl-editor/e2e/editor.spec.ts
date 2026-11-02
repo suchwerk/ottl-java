@@ -62,6 +62,6 @@ test('OTTL editor: diagnostics, completion, run and activate', async ({ page }) 
     await expect(page.getByTestId('run-result')).toContainText('"priority": "URGENT"', { timeout: 20_000 });
 
     // Restore the default rule so the environment stays clean.
-    await setEditorText(page, '# context: Order\nset(order.status, "REVIEW") where IsHighValue(order.amount)');
+    await setEditorText(page, '# context: Order\nset(order.status, OrderStatus.PROCESSING) where IsHighValue(order.amount)');
     await page.getByTestId('activate-btn').click();
 });

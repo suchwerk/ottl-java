@@ -50,8 +50,8 @@ final class AccessibleTypeModel {
         }
         if (type.isEnum()) {
             throw new AccessorGenerationException(
-                    "@OttlAccessible does not support enums: " + type.getName()
-                            + ". Enum constants are values, not property bags.");
+                    "@OttlAccessible enum " + type.getName()
+                            + " is a set of constants, not a property bag. It is not given an accessor or a rule manager.");
         }
         if (type.isArray() || type.isPrimitive()) {
             throw new AccessorGenerationException(
@@ -75,6 +75,33 @@ final class AccessibleTypeModel {
             if (!Modifier.isPublic(enclosing.getModifiers())) {
                 throw new AccessorGenerationException(
                         "@OttlAccessible type " + type.getName()
+                                + " is not accessible because enclosing type " + enclosing.getName()
+                                + " is not public.");
+            }
+        }
+    }
+
+    /**
+     * An enum may be {@code @OttlAccessible} so its constants can be named in expressions. It must be
+     * public because generated code in another package loads the constants directly.
+     */
+    static void validateEnum(Class<?> type) {
+        if (!type.isEnum()) {
+            throw new AccessorGenerationException(type.getName() + " is not an enum");
+        }
+        if (type.isAnonymousClass() || type.isLocalClass()) {
+            throw new AccessorGenerationException(
+                    "@OttlAccessible does not support local or anonymous enums: " + type.getName());
+        }
+        if (!Modifier.isPublic(type.getModifiers())) {
+            throw new AccessorGenerationException(
+                    "@OttlAccessible enum " + type.getName()
+                            + " is not public. Generated code lives in another package and can only reference public enums.");
+        }
+        for (Class<?> enclosing = type.getEnclosingClass(); enclosing != null; enclosing = enclosing.getEnclosingClass()) {
+            if (!Modifier.isPublic(enclosing.getModifiers())) {
+                throw new AccessorGenerationException(
+                        "@OttlAccessible enum " + type.getName()
                                 + " is not accessible because enclosing type " + enclosing.getName()
                                 + " is not public.");
             }
@@ -168,8 +195,7 @@ final class AccessibleTypeModel {
         if (methods.isEmpty()) {
             return null;
         }
-        List<Class<?>> returnTypes = methods.stream().map(Method::getReturnType).distinct().toList();
-        if (returnTypes.size() > 1) {
+        if (distinctTypes(methods, method -> method.getReturnType()).size() > 1) {
             throw new AccessorGenerationException(
                     "Ambiguous getter for property '" + property + "' on " + type.getName()
                             + ". Conflicting signatures: " + signatures(methods)
@@ -184,14 +210,29 @@ final class AccessibleTypeModel {
         if (methods.isEmpty()) {
             return null;
         }
-        List<Class<?>> paramTypes = methods.stream().map(m -> m.getParameterTypes()[0]).distinct().toList();
-        if (paramTypes.size() > 1) {
+        if (distinctTypes(methods, m -> m.getParameterTypes()[0]).size() > 1) {
             throw new AccessorGenerationException(
                     "Ambiguous setter for property '" + property + "' on " + type.getName()
                             + ". Conflicting signatures: " + signatures(methods)
                             + ". Declare a single setter; overloaded setters are rejected.");
         }
         return mostSpecific(type, property, "setter", methods);
+    }
+
+    /**
+     * Distinct property types. A loop, because Quarkus dev mode compiles this module with ECJ:
+     * {@code stream().map(Method::getReturnType).toList()} is inferred as
+     * {@code List<Class<capture of ?>>}, which ECJ will not assign to {@code List<Class<?>>}.
+     */
+    private static List<Class<?>> distinctTypes(List<Method> methods, java.util.function.Function<Method, Class<?>> typeOf) {
+        List<Class<?>> types = new ArrayList<>();
+        for (Method method : methods) {
+            Class<?> type = typeOf.apply(method);
+            if (!types.contains(type)) {
+                types.add(type);
+            }
+        }
+        return types;
     }
 
     private static Method mostSpecific(Class<?> type, String property, String kind, List<Method> methods) {

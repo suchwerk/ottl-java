@@ -14,5 +14,5 @@ import java.math.BigDecimal;
  * so it works in a Quarkus native image with COPY (immutable) semantics.
  */
 @OttlAccessible
-public record Order(String id, BigDecimal amount, String status, String priority) {
+public record Order(String id, BigDecimal amount, OrderStatus status, String priority) {
 }

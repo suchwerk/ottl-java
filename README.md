@@ -18,8 +18,12 @@ so you can change transformation logic without redeploying.
 ## Highlights
 
 - ✅ OTTL subset: literals, paths & nested/keyed access, comparisons, boolean logic, `where`, sequential
-  statements, and the `set` / `delete_key` / `keep_keys` editors.
-- ✅ Two profiles: **STANDARD** (OTTL-compatible) and **JAVA** (POJOs/records/beans/JSON).
+  statements, `where { }` blocks, enum constants (`OrderStatus.PENDING`), and the `set` / `delete_key` /
+  `keep_keys` editors.
+- ✅ Optional **extended dialect** (`OttlDialect.EXTENDED`): statement blocks and `if` / `else if` /
+  `else`. This is not official OTTL. The default dialect stays `OTTL`.
+- ✅ Two profiles: **STANDARD** (OTTL-compatible) and **JAVA** (POJOs/records/beans/JSON). Profiles
+  choose data shapes; the dialect chooses syntax.
 - ✅ **MUTATE** vs **COPY** execution — records use copy-on-write, including nested records.
 - ✅ Pluggable property access (`PropertyResolver` SPI), discovered via `ServiceLoader`.
 - ✅ Runtime-updatable rules: versioned, validated-before-activation, atomic swap, previous version
@@ -113,9 +117,13 @@ public class OrderFunctions {
 Configuration (`application.properties`):
 ```properties
 quarkus.ottl.profile=JAVA
+quarkus.ottl.dialect=OTTL
 quarkus.ottl.max-statements=100
 quarkus.ottl.max-source-length=10000
 ```
+
+`quarkus.ottl.dialect=EXTENDED` enables blocks and `if` / `else` for every rule that engine compiles.
+The example application sets `EXTENDED`. The extension default is `OTTL`.
 
 Strict checking of types, properties and functions stays on. It is not a configuration switch.
 `max-source-length` must be between 1 and 1000000, and `max-statements` between 1 and 10000.
@@ -160,6 +168,35 @@ curl -s -XPOST localhost:8080/orders/transform -H 'Content-Type: application/jso
 See [docs/architecture.md §3–§4](docs/architecture.md) for the grammar and semantics, and
 [docs/conformance.md](docs/conformance.md) for reference cases and known gaps. Unsupported OTTL
 features are listed explicitly in [architecture.md §8](docs/architecture.md#8-unsupported-ottl-features).
+
+## OTTL Extended Language
+
+Blocks and `if` / `else if` / `else` are an ottl-java extension. They are **not** OpenTelemetry OTTL.
+Enable them with `OttlDialect.EXTENDED` (import `io.ottl.lang.OttlDialect`). The default dialect is
+`OTTL`, which keeps today's statements and `where` blocks and rejects the new syntax with
+`Language feature 'if/else' requires OttlDialect.EXTENDED`.
+
+```java
+OttlEngine engine = OttlEngine.builder()
+        .profile(OttlProfile.JAVA)
+        .dialect(OttlDialect.EXTENDED)
+        .build();
+
+OttlProgram<Order> program = engine.compile("""
+        if order.amount > 10000 {
+            set(order.status, "REVIEW")
+            set(order.priority, "HIGH")
+        } else {
+            set(order.priority, "LOW")
+        }
+        """, Order.class);
+```
+
+A block runs its statements in order against the same root. Records still copy, JavaBeans and JSON
+still mutate, and a false branch is not evaluated. Invalid statements inside a branch that will not
+run are still rejected at compile time. There is no `while`, `for`, or `let`. Nesting is bounded by
+`OttlLimits`. Full semantics, Quarkus activation, and the compatibility rules are in
+[architecture.md §10](docs/architecture.md#10-ottl-extended-language).
 
 ## Extending
 

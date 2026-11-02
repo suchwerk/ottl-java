@@ -14,6 +14,8 @@ public enum TokenType {
     RPAREN,
     LBRACKET,
     RBRACKET,
+    LBRACE,
+    RBRACE,
     COMMA,
     DOT,
     MINUS,

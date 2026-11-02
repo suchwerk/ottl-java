@@ -15,6 +15,7 @@ import io.ottl.functions.standard.KeepKeysFunction;
 import io.ottl.functions.standard.SetFunction;
 import io.ottl.rules.RuleManager;
 import io.ottl.rules.RuleRepository;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyAccessorRegistry;
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.InstanceHandle;
@@ -42,12 +43,15 @@ public class OttlRecorder {
         SmallRyeConfig smallRyeConfig = ConfigProvider.getConfig().unwrap(SmallRyeConfig.class);
         OttlConfig config = smallRyeConfig.getConfigMapping(OttlConfig.class);
         PropertyAccessorRegistry registry = Arc.container().instance(PropertyAccessorRegistry.class).get();
+        EnumConstantRegistry enums = Arc.container().instance(EnumConstantRegistry.class).get();
 
         OttlEngine.Builder builder = OttlEngine.builder()
                 .profile(config.profile())
+                .dialect(config.dialect())
                 .loadDefaults(false)
                 .limits(limits(config))
                 .accessorRegistry(registry)
+                .enumRegistry(enums)
                 .strictTypes(true)
                 .resolver(new MapResolver())
                 .resolver(new JsonNodeResolver())

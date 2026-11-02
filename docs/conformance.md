@@ -24,6 +24,16 @@ References:
 | literals: string/int/float/bool/nil | literal parsing | `ParserTest.parsesFloatsNegativesAndNil` |
 | keyed/indexed paths `a["k"][0]` | nested access | `ParserTest.parsesKeyedPathAndIntKeys` |
 
+## ottl-java extensions
+
+These are not part of reference OTTL. They are available in both profiles.
+
+| Construct | Semantics | Covered by |
+|---|---|---|
+| `where <condition> { ... }` | evaluate the condition once, then run every item in the block. Valid in `OttlDialect.OTTL` and `EXTENDED` | `WhereBlockTest` |
+| `EnumName.CONSTANT` | allowlisted enum constant used as a value; the enum is not a context | `EnumConstantTest` |
+| `{ ... }` and `if` / `else if` / `else` | extended dialect only. Not OpenTelemetry OTTL. See [architecture.md §10](architecture.md#10-ottl-extended-language) | `ControlFlowTest` |
+
 ## Known differences / gaps
 
 See [architecture.md §8](architecture.md#8-unsupported-ottl-features). Notably: math expressions, the

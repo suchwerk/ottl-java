@@ -5,6 +5,7 @@
 package io.ottl.quarkus;
 
 import io.ottl.OttlProfile;
+import io.ottl.lang.OttlDialect;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +37,11 @@ class OttlRecorderLimitsTest {
             @Override
             public OttlProfile profile() {
                 return OttlProfile.JAVA;
+            }
+
+            @Override
+            public OttlDialect dialect() {
+                return OttlDialect.OTTL;
             }
 
             @Override

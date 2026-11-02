@@ -7,11 +7,14 @@ package io.ottl.function;
 import io.ottl.ExecutionMode;
 import io.ottl.OttlEvaluationException;
 import io.ottl.lang.ast.Expression;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyResolver;
 import io.ottl.spi.ResolverRegistry;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Per-execution state handed to functions. Holds the mutable "current root" and provides safe path
@@ -26,14 +29,21 @@ public final class ExecutionContext {
     private final ResolverRegistry resolvers;
     private final FunctionRegistry functions;
     private final ExecutionMode mode;
+    private final EnumConstantRegistry enums;
 
     public ExecutionContext(Object root, String contextName, ResolverRegistry resolvers,
                             FunctionRegistry functions, ExecutionMode mode) {
+        this(root, contextName, resolvers, functions, mode, EnumConstantRegistry.empty());
+    }
+
+    public ExecutionContext(Object root, String contextName, ResolverRegistry resolvers,
+                            FunctionRegistry functions, ExecutionMode mode, EnumConstantRegistry enums) {
         this.root = root;
         this.contextName = contextName;
         this.resolvers = resolvers;
         this.functions = functions;
         this.mode = mode;
+        this.enums = enums == null ? EnumConstantRegistry.empty() : enums;
     }
 
     public Object root() {
@@ -59,6 +69,28 @@ public final class ExecutionContext {
     /** Evaluate an expression to a value. */
     public Object evaluate(Expression expression) {
         return Evaluator.eval(this, expression);
+    }
+
+    /**
+     * Resolve {@code EnumName.CONSTANT} (or a fully-qualified type name). Empty when the path is not
+     * an allowlisted enum reference. Unknown constants and property access on an enum fail here.
+     */
+    public Optional<Object> enumConstant(Expression.Path path) {
+        List<String> names = fieldNames(path.segments());
+        rejectBareEnum(names);
+        EnumConstantRegistry.Match match = enums.match(names);
+        if (match == null) {
+            return Optional.empty();
+        }
+        if (match.propertyAccess()) {
+            throw new OttlEvaluationException(
+                    "Enum " + match.typeName() + " constants are values, not property bags");
+        }
+        if (match.value() == null) {
+            throw new OttlEvaluationException(
+                    "Unknown enum constant '" + match.constant() + "' on " + match.typeName());
+        }
+        return Optional.of(match.value());
     }
 
     /**
@@ -106,6 +138,11 @@ public final class ExecutionContext {
     // ----- path writes (updates root, with copy-on-write bubbling) -----
 
     public void setPath(List<Expression.PathSegment> segments, Object value) {
+        List<String> names = fieldNames(segments);
+        rejectBareEnum(names);
+        if (enums.match(names) != null) {
+            throw new OttlEvaluationException("Enum constants are values and cannot be assigned");
+        }
         if (segments.isEmpty()) {
             this.root = value;
             return;
@@ -160,6 +197,34 @@ public final class ExecutionContext {
         } else {
             this.root = setRec(root, segments, 0, newValue);
         }
+    }
+
+    private void rejectBareEnum(List<String> names) {
+        if (names == null || names.size() != 1) {
+            return;
+        }
+        EnumConstantRegistry.EnumType type = enums.find(names.get(0));
+        if (type == null || type.constants().isEmpty()) {
+            return;
+        }
+        throw new OttlEvaluationException(
+                "Enum '" + type.simpleName() + "' needs a constant, for example "
+                        + type.simpleName() + "." + type.constants().get(0));
+    }
+
+    private static List<String> fieldNames(List<Expression.PathSegment> segments) {
+        if (segments == null) {
+            return null;
+        }
+        List<String> names = new ArrayList<>(segments.size());
+        for (Expression.PathSegment seg : segments) {
+            if (seg instanceof Expression.FieldSegment field) {
+                names.add(field.name());
+            } else {
+                return null;
+            }
+        }
+        return names;
     }
 
     private static String describe(Expression.PathSegment seg) {

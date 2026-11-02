@@ -5,8 +5,10 @@
 package io.ottl.quarkus.deployment;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -24,6 +26,7 @@ import io.ottl.quarkus.DefaultRuleRepositoryProducer;
 import io.ottl.quarkus.OttlRecorder;
 import io.ottl.rules.RuleManager;
 import io.ottl.rules.RuleRepository;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyAccessorRegistry;
 import io.quarkus.arc.SyntheticCreationalContext;
 import io.quarkus.arc.deployment.AdditionalBeanBuildItem;
@@ -82,6 +85,8 @@ public class OttlProcessor {
         GeneratedClassGizmoAdaptor classAdaptor = new GeneratedClassGizmoAdaptor(generatedClasses, true);
         List<AccessorGenerator.Generated> generated = new ArrayList<>();
         List<DotName> accessibleTypes = new ArrayList<>();
+        List<Class<?>> enums = new ArrayList<>();
+        List<String> reflectiveNames = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
 
         for (AnnotationInstance ann : combinedIndex.getIndex().getAnnotations(OTTL_ACCESSIBLE)) {
@@ -94,15 +99,24 @@ public class OttlProcessor {
                 continue;
             }
             Class<?> type = loadClass(typeName);
+            reflectiveNames.add(typeName);
+            if (type.isEnum()) {
+                // Constants only: no accessor and no RuleManager, so the enum is not an editor context.
+                AccessibleTypeModel.validateEnum(type);
+                enums.add(type);
+                continue;
+            }
             generated.add(AccessorGenerator.generate(type, classAdaptor));
             accessibleTypes.add(classInfo.name());
         }
+        rejectDuplicateEnumNames(enums);
 
-        if (!accessibleTypes.isEmpty()) {
-            reflectiveClasses.produce(ReflectiveClassBuildItem.builder(
-                    accessibleTypes.stream().map(DotName::toString).toArray(String[]::new))
+        if (!reflectiveNames.isEmpty()) {
+            reflectiveClasses.produce(ReflectiveClassBuildItem.builder(reflectiveNames.toArray(String[]::new))
                     .constructors().methods().fields().build());
         }
+        EnumRegistryGenerator.generate(enums, new GeneratedBeanGizmoAdaptor(generatedBeans));
+        unremovableBeans.produce(UnremovableBeanBuildItem.beanTypes(EnumConstantRegistry.class));
 
         AccessorGenerator.generateRegistry(generated, new GeneratedBeanGizmoAdaptor(generatedBeans));
         unremovableBeans.produce(UnremovableBeanBuildItem.beanTypes(PropertyAccessorRegistry.class));
@@ -172,6 +186,19 @@ public class OttlProcessor {
                     .addInjectionPoint(Type.create(RuleRepository.class))
                     .createWith(creator)
                     .done());
+        }
+    }
+
+    private static void rejectDuplicateEnumNames(List<Class<?>> enums) {
+        Map<String, String> simpleNames = new LinkedHashMap<>();
+        for (Class<?> type : enums) {
+            String previous = simpleNames.put(type.getSimpleName(), type.getName());
+            if (previous != null) {
+                throw new AccessorGenerationException(
+                        "Two @OttlAccessible enums share the simple name '" + type.getSimpleName()
+                                + "': " + previous + " and " + type.getName()
+                                + ". Expressions refer to constants as EnumName.CONSTANT, so each simple name must be unique.");
+            }
         }
     }
 

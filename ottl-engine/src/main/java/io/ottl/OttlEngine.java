@@ -9,10 +9,12 @@ import io.ottl.function.OttlFunction;
 import io.ottl.internal.CompiledProgram;
 import io.ottl.internal.SemanticValidator;
 import io.ottl.internal.Validator;
+import io.ottl.lang.OttlDialect;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.parser.OttlParseException;
 import io.ottl.lang.parser.Parser;
 import io.ottl.spi.AccessorBackedResolver;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyAccessorRegistry;
 import io.ottl.spi.PropertyResolver;
 import io.ottl.spi.ResolverRegistry;
@@ -33,6 +35,10 @@ import java.util.ServiceLoader;
  *
  * <pre>{@code
  * OttlEngine engine = OttlEngine.builder().profile(OttlProfile.JAVA).build();
+ * OttlEngine extended = OttlEngine.builder()
+ *         .profile(OttlProfile.JAVA)
+ *         .dialect(OttlDialect.EXTENDED)
+ *         .build();
  * OttlProgram<Order> program = engine.compile("set(order.status, \"REVIEW\")", Order.class);
  * }</pre>
  *
@@ -41,6 +47,7 @@ import java.util.ServiceLoader;
 public final class OttlEngine {
 
     private final OttlProfile profile;
+    private final OttlDialect dialect;
     private final ExecutionMode defaultMode;
     private final String contextNameOverride;
     private final ResolverRegistry resolvers;
@@ -48,15 +55,18 @@ public final class OttlEngine {
     private final OttlLimits limits;
     private final Validator validator;
     private final PropertyAccessorRegistry accessorRegistry;
+    private final EnumConstantRegistry enumRegistry;
     private final boolean strictTypes;
     private final SemanticValidator semanticValidator;
 
     private OttlEngine(Builder b) {
         this.profile = b.profile;
+        this.dialect = b.dialect;
         this.defaultMode = b.defaultMode;
         this.contextNameOverride = b.contextName;
         this.limits = b.limits;
         this.accessorRegistry = b.accessorRegistry;
+        this.enumRegistry = b.enumRegistry == null ? EnumConstantRegistry.empty() : b.enumRegistry;
         this.strictTypes = b.strictTypes;
 
         List<PropertyResolver> allResolvers = new ArrayList<>(b.resolvers);
@@ -68,7 +78,8 @@ public final class OttlEngine {
         }
         allResolvers.sort(Comparator.comparingInt(PropertyResolver::priority));
         this.resolvers = new ResolverRegistry(allResolvers);
-        this.semanticValidator = accessorRegistry != null ? new SemanticValidator(accessorRegistry) : null;
+        this.semanticValidator = accessorRegistry != null
+                ? new SemanticValidator(accessorRegistry, enumRegistry) : null;
 
         FunctionRegistry.Builder fnBuilder = FunctionRegistry.builder();
         if (b.loadDefaults) {
@@ -96,7 +107,7 @@ public final class OttlEngine {
         }
         OttlScript script;
         try {
-            script = Parser.parse(source);
+            script = Parser.parse(source, dialect, limits.maxCallDepth());
         } catch (OttlParseException e) {
             throw new OttlCompilationException("Parse error: " + e.getMessage(), e);
         }
@@ -107,7 +118,7 @@ public final class OttlEngine {
         for (PropertyResolver r : resolvers.resolvers()) {
             r.prepare(type);
         }
-        return new CompiledProgram<>(source, script, contextName, resolvers, functions, mode);
+        return new CompiledProgram<>(source, script, contextName, resolvers, functions, mode, enumRegistry);
     }
 
     /** Create a {@link io.ottl.rules.RuleManager} for runtime-updatable rules of {@code type}. */
@@ -122,7 +133,7 @@ public final class OttlEngine {
                     + " chars (limit " + limits.maxSourceLength() + ")");
         }
         try {
-            validator.validate(Parser.parse(source));
+            validator.validate(Parser.parse(source, dialect, limits.maxCallDepth()));
         } catch (OttlParseException e) {
             throw new OttlCompilationException("Parse error: " + e.getMessage(), e);
         }
@@ -162,6 +173,11 @@ public final class OttlEngine {
         return profile;
     }
 
+    /** The language dialect this engine accepts. The default is {@link OttlDialect#OTTL}. */
+    public OttlDialect dialect() {
+        return dialect;
+    }
+
     public FunctionRegistry functions() {
         return functions;
     }
@@ -178,6 +194,10 @@ public final class OttlEngine {
         return accessorRegistry;
     }
 
+    public EnumConstantRegistry enumRegistry() {
+        return enumRegistry;
+    }
+
     public boolean strictTypes() {
         return strictTypes;
     }
@@ -185,6 +205,7 @@ public final class OttlEngine {
     /** Fluent builder for {@link OttlEngine}. */
     public static final class Builder {
         private OttlProfile profile = OttlProfile.STANDARD;
+        private OttlDialect dialect = OttlDialect.OTTL;
         private ExecutionMode defaultMode = ExecutionMode.MUTATE;
         private String contextName;
         private final List<PropertyResolver> resolvers = new ArrayList<>();
@@ -192,10 +213,21 @@ public final class OttlEngine {
         private OttlLimits limits = OttlLimits.defaults();
         private boolean loadDefaults = true;
         private PropertyAccessorRegistry accessorRegistry;
+        private EnumConstantRegistry enumRegistry = EnumConstantRegistry.empty();
         private boolean strictTypes;
 
         public Builder profile(OttlProfile profile) {
             this.profile = profile;
+            return this;
+        }
+
+        /**
+         * Language syntax to accept. {@link OttlDialect#OTTL} is the default and rejects blocks and
+         * {@code if}/{@code else}. {@link OttlDialect#EXTENDED} adds those constructs. This is
+         * independent of {@link #profile(OttlProfile)}.
+         */
+        public Builder dialect(OttlDialect dialect) {
+            this.dialect = dialect == null ? OttlDialect.OTTL : dialect;
             return this;
         }
 
@@ -250,6 +282,14 @@ public final class OttlEngine {
          */
         public Builder accessorRegistry(PropertyAccessorRegistry accessorRegistry) {
             this.accessorRegistry = accessorRegistry;
+            return this;
+        }
+
+        /**
+         * Constants rules may name as {@code EnumName.CONSTANT}. Enums are values, not context types.
+         */
+        public Builder enumRegistry(EnumConstantRegistry enumRegistry) {
+            this.enumRegistry = enumRegistry == null ? EnumConstantRegistry.empty() : enumRegistry;
             return this;
         }
 

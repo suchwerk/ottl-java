@@ -4,9 +4,12 @@
  */
 package io.ottl.lsp.metadata;
 
+import io.ottl.OttlLimits;
 import io.ottl.function.DescribedFunction;
 import io.ottl.function.FunctionRegistry;
 import io.ottl.function.OttlFunction;
+import io.ottl.lang.OttlDialect;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyAccessorRegistry;
 import io.ottl.spi.TypeMetadata;
 
@@ -27,6 +30,9 @@ public final class OttlMetadata {
 
     private final PropertyAccessorRegistry registry;
     private final FunctionRegistry functions;
+    private final EnumConstantRegistry enums;
+    private final OttlDialect dialect;
+    private final int maxNesting;
 
     /** Curated documentation for the standard built-in editors (our own language, not a Java schema). */
     private static final Map<String, String> BUILTIN_DOCS = Map.of(
@@ -44,8 +50,33 @@ public final class OttlMetadata {
                     new FunctionInfo.ParamInfo("keys", "Value...")));
 
     public OttlMetadata(PropertyAccessorRegistry registry, FunctionRegistry functions) {
+        this(registry, functions, EnumConstantRegistry.empty());
+    }
+
+    public OttlMetadata(PropertyAccessorRegistry registry, FunctionRegistry functions, EnumConstantRegistry enums) {
+        this(registry, functions, enums, OttlDialect.OTTL, OttlLimits.defaults().maxCallDepth());
+    }
+
+    public OttlMetadata(PropertyAccessorRegistry registry, FunctionRegistry functions, EnumConstantRegistry enums,
+                        OttlDialect dialect, int maxNesting) {
         this.registry = registry;
         this.functions = functions;
+        this.enums = enums == null ? EnumConstantRegistry.empty() : enums;
+        this.dialect = dialect == null ? OttlDialect.OTTL : dialect;
+        this.maxNesting = maxNesting < 1 ? 1 : maxNesting;
+    }
+
+    /** A copy that parses with {@code dialect}. The engine metadata uses the engine's dialect. */
+    public OttlMetadata withDialect(OttlDialect dialect) {
+        return new OttlMetadata(registry, functions, enums, dialect, maxNesting);
+    }
+
+    public OttlDialect dialect() {
+        return dialect;
+    }
+
+    public int maxNesting() {
+        return maxNesting;
     }
 
     // ----- types / contexts -----
@@ -71,6 +102,25 @@ public final class OttlMetadata {
             }
         }
         return Optional.empty();
+    }
+
+    /** Allowlisted enums. These are expression values, not editor contexts. */
+    public List<EnumConstantRegistry.EnumType> enums() {
+        return enums.types();
+    }
+
+    /** Resolve an enum by simple name or fully-qualified name. */
+    public Optional<EnumConstantRegistry.EnumType> enumType(String name) {
+        EnumConstantRegistry.EnumType type = enums.find(name);
+        return Optional.ofNullable(type);
+    }
+
+    /**
+     * Interpret a dotted path as an enum constant. Empty when the path does not name an allowlisted
+     * enum. Same rules as {@link EnumConstantRegistry#match(List)}.
+     */
+    public Optional<EnumConstantRegistry.Match> enumReference(List<String> fieldNames) {
+        return Optional.ofNullable(enums.match(fieldNames));
     }
 
     /** The default identifier used to refer to the root in rule source (engine convention). */

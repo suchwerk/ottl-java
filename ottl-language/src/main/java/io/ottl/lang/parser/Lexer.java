@@ -70,6 +70,10 @@ public final class Lexer {
                 return new Token(TokenType.LBRACKET, "[", startLine, startCol);
             case ']':
                 return new Token(TokenType.RBRACKET, "]", startLine, startCol);
+            case '{':
+                return new Token(TokenType.LBRACE, "{", startLine, startCol);
+            case '}':
+                return new Token(TokenType.RBRACE, "}", startLine, startCol);
             case ',':
                 return new Token(TokenType.COMMA, ",", startLine, startCol);
             case '.':
