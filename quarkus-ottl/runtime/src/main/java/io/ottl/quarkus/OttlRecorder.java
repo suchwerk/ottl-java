@@ -47,6 +47,7 @@ public class OttlRecorder {
 
         OttlEngine.Builder builder = OttlEngine.builder()
                 .profile(config.profile())
+                .dialect(config.dialect())
                 .loadDefaults(false)
                 .limits(limits(config))
                 .accessorRegistry(registry)

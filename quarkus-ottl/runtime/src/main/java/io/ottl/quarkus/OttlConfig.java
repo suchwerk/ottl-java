@@ -5,6 +5,7 @@
 package io.ottl.quarkus;
 
 import io.ottl.OttlProfile;
+import io.ottl.lang.OttlDialect;
 import io.quarkus.runtime.annotations.ConfigPhase;
 import io.quarkus.runtime.annotations.ConfigRoot;
 import io.smallrye.config.ConfigMapping;
@@ -23,9 +24,16 @@ import io.smallrye.config.WithDefault;
 @ConfigRoot(phase = ConfigPhase.RUN_TIME)
 public interface OttlConfig {
 
-    /** The engine profile: {@code STANDARD} or {@code JAVA}. */
+    /** The engine profile: {@code STANDARD} or {@code JAVA}. This is not the language dialect. */
     @WithDefault("JAVA")
     OttlProfile profile();
+
+    /**
+     * Language syntax. {@code OTTL} is the default and rejects blocks and {@code if}/{@code else}.
+     * {@code EXTENDED} adds those constructs. It is not official OpenTelemetry OTTL syntax.
+     */
+    @WithDefault("OTTL")
+    OttlDialect dialect();
 
     /**
      * Maximum OTTL source length accepted by the engine. Must be between 1 and 1000000.

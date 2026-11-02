@@ -238,4 +238,67 @@ class OttlNativeIT {
                 .when().put("/shipments/rules")
                 .then().statusCode(400);
     }
+
+    // ----- Test 9: extended if/else, hot swap, and rejection of an invalid replacement -----
+
+    @Test
+    @Order(9)
+    void extendedConditionalRuleHotSwapsInsideTheNativeImage() {
+        String conditional = """
+                if order.amount > 10000 {
+                    set(order.status, OrderStatus.CANCELLED)
+                    set(order.priority, "HIGH")
+                } else {
+                    set(order.priority, "LOW")
+                }
+                """;
+        given().contentType(ContentType.TEXT).body(conditional)
+                .when().put("/rules/order-rules")
+                .then().statusCode(200);
+
+        given().contentType(ContentType.JSON).body(HIGH_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("status", is("CANCELLED"))
+                .body("priority", is("HIGH"));
+
+        given().contentType(ContentType.JSON).body(LOW_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("status", is("PENDING"))
+                .body("priority", is("LOW"));
+
+        given().contentType(ContentType.TEXT).body("""
+                if order.amount > 0 {
+                    set(order.priority, "URGENT")
+                }
+                """)
+                .when().put("/rules/order-rules")
+                .then().statusCode(200);
+
+        given().contentType(ContentType.JSON).body(LOW_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("priority", is("URGENT"));
+
+        int version = given().when().get("/rules/order-rules")
+                .then().statusCode(200).extract().path("version");
+
+        given().contentType(ContentType.TEXT).body("""
+                if order.amount > 0 {
+                    set(order.unknownProperty, "INVALID")
+                }
+                """)
+                .when().put("/rules/order-rules")
+                .then().statusCode(400);
+
+        given().when().get("/rules/order-rules")
+                .then().statusCode(200)
+                .body("version", is(version));
+
+        given().contentType(ContentType.JSON).body(LOW_VALUE_ORDER)
+                .when().post("/orders/transform")
+                .then().statusCode(200)
+                .body("priority", is("URGENT"));
+    }
 }
