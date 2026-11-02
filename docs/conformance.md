@@ -32,7 +32,7 @@ These are not part of reference OTTL. They are available in both profiles.
 |---|---|---|
 | `where <condition> { ... }` | evaluate the condition once, then run every item in the block. Valid in `OttlDialect.OTTL` and `EXTENDED` | `WhereBlockTest` |
 | `EnumName.CONSTANT` | allowlisted enum constant used as a value; the enum is not a context | `EnumConstantTest` |
-| `{ ... }` and `if` / `else if` / `else` | extended dialect only. Not OpenTelemetry OTTL. See [architecture.md §10](architecture.md#10-ottl-extended-language) | `ControlFlowTest` |
+| `{ ... }` and `if` / `else if` / `else` | `OttlDialect.EXTENDED` only, on either profile. Not OpenTelemetry OTTL. See [architecture.md §10](architecture.md#10-ottl-extended-language) and [AGENTS.md](../AGENTS.md) | `ControlFlowTest` |
 
 ## Known differences / gaps
 

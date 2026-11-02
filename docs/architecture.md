@@ -92,14 +92,17 @@ functionCall:= IDENT "(" (value ("," value)*)? ")"
 ## 4. Engine design
 
 ### Profiles and dialects
-A **profile** chooses data shapes. A **dialect** chooses syntax. They are independent.
+A **profile** chooses data shapes. A **dialect** chooses syntax. They are independent. Neither
+setting may be inferred from the other. The mandatory rule for contributors and coding agents,
+including the profile/dialect matrix and future constructs, is in [AGENTS.md](../AGENTS.md).
 
 - `OttlProfile.STANDARD` — OTTL-compatible behavior (maps/attributes).
 - `OttlProfile.JAVA` — STANDARD plus Java object access (POJOs, records, beans) and Java-only functions.
 - `OttlDialect.OTTL` (default) — supported OTTL statements, a trailing `where`, and the existing
   `where condition { ... }` block. Bare `{ ... }` blocks and `if` / `else` are rejected.
 - `OttlDialect.EXTENDED` — the OTTL dialect plus blocks and `if` / `else if` / `else`. This is not
-  OpenTelemetry OTTL. See [§10](#10-ottl-extended-language).
+  OpenTelemetry OTTL. See [§10](#10-ottl-extended-language). `let`, `switch` / `case`, and named
+  rule blocks are not part of `EXTENDED` today.
 
 ### Property access SPI
 `io.ottl.spi.PropertyResolver` is the extension point. Resolvers are discovered via `ServiceLoader`
@@ -191,8 +194,9 @@ Explicitly **not** implemented in the MVP (documented honestly rather than faked
 - Statement-level `ottl`-config features (conditions list, error modes, telemetry settings).
 - Full operator-precedence parity audits against the Go PEG grammar (we cover the common subset).
 - Loops (`while`, `for`, `foreach`), recursive functions, arbitrary Java method calls, `let` bindings,
-  and named rule blocks. Blocks are shaped so a future `let` can be lexical and immutable; they are
-  not implemented.
+  `switch` / `case`, and named rule blocks. Blocks are shaped so a future `let` can be lexical and
+  immutable; they are not implemented. New constructs belong to `OttlDialect.EXTENDED` unless they
+  are standardized in OpenTelemetry OTTL. See [AGENTS.md](../AGENTS.md).
 
 See [conformance.md](conformance.md) for the reference cases currently exercised.
 
@@ -336,6 +340,7 @@ not add a second level. `maxCallDepth` must be between 1 and 64; the parser will
 that, so a deeply nested script cannot overflow the stack. There is no `while`, `for`, `foreach`,
 recursive call, or arbitrary method invocation.
 
-`let` and named `rule` blocks are not implemented. A `Block` is the place a future immutable
-lexical `let` would be scoped. Nothing stores per-execution bindings today.
-```
+`let`, `switch` / `case`, and named `rule` blocks are not implemented. A `Block` is the place a
+future immutable lexical `let` would be scoped. Nothing stores per-execution bindings today. Those
+constructs, if added, belong to `OttlDialect.EXTENDED` and must not be enabled by choosing
+`OttlProfile.JAVA`. See [AGENTS.md](../AGENTS.md).

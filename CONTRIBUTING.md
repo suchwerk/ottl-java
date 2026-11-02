@@ -23,6 +23,8 @@ Please keep the project's invariants intact (see [`docs/architecture.md`](docs/a
   from expressions; validate before activation.
 - **Honesty:** don't claim functionality that isn't implemented and tested. Leave explicit `TODO`s for
   skeletons, and don't claim native-image support without a passing native build.
+- **Dialect and profile stay independent.** `OttlProfile` selects the data model; `OttlDialect`
+  selects syntax. Neither may be inferred from the other. See [`AGENTS.md`](AGENTS.md).
 
 ## Building and testing
 

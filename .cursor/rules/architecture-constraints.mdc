@@ -24,3 +24,6 @@ alwaysApply: true
   native support unless a native build + smoke test actually passes.
 - **Honesty:** if something is beyond MVP scope, leave an explicit `TODO`/skeleton (see
   `ottl-context-otel`). Don't fake functionality or claim OTTL v1 compliance before conformance passes.
+- **`OttlDialect` and `OttlProfile` are independent.** A profile selects the data model; a dialect
+  selects syntax. Never infer one from the other. The mandatory rule, including what is implemented
+  today, is in `AGENTS.md`.
