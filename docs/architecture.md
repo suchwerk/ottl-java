@@ -173,7 +173,9 @@ Explicitly **not** implemented in the MVP (documented honestly rather than faked
 
 - Math expressions (`+ - * /`), indexing math, and `Len`/`Concat`/most standard converters.
 - OTTL pdata contexts (span/metric/log/resource/scope) — `ottl-context-otel` is a skeleton.
-- Enum references, time/duration literals, byte-slice literals, `nil`-coalescing specifics.
+- Time/duration literals, byte-slice literals, `nil`-coalescing specifics. Enum constants are supported
+  as expression values (`OrderStatus.PENDING`) when the enum is `@OttlAccessible`; the enum is not a
+  context type.
 - `where` combined with OTTL's full converter library; only the allowlisted functions are available.
 - Statement-level `ottl`-config features (conditions list, error modes, telemetry settings).
 - Full operator-precedence parity audits against the Go PEG grammar (we cover the common subset).

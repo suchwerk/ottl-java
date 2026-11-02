@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Stateless evaluator for OTTL expressions and conditions. All state lives in the supplied
@@ -31,7 +32,10 @@ public final class Evaluator {
             case Expression.BoolLiteral b -> b.value();
             case Expression.NilLiteral ignored -> null;
             case Expression.ListLiteral list -> evalList(ctx, list);
-            case Expression.Path path -> ctx.getPath(ctx.strip(path));
+            case Expression.Path path -> {
+                Optional<Object> enumConstant = ctx.enumConstant(path);
+                yield enumConstant.isPresent() ? enumConstant.get() : ctx.getPath(ctx.strip(path));
+            }
             case Expression.FunctionCall call -> evalCall(ctx, call);
         };
     }

@@ -97,7 +97,9 @@ and emits a `PropertyAccessor` implementation with [Gizmo](https://github.com/qu
   constructor, reading unchanged components and coercing the changed one (`ValueCoercion`).
 - **POJOs/JavaBeans**: `get` calls `getX()` or, for booleans, `isX()` when both exist and agree;
   `set` calls the single `setX(...)` and returns the same instance (MUTATE).
-- Public concrete classes and records only. Interfaces, enums, abstract classes, local classes and
+- Public concrete classes and records get accessors. A public `@OttlAccessible` enum does not: its
+  constants are loaded with `getstatic` into an enum registry so rules can name `EnumName.CONSTANT`.
+  The enum is not a context and has no rule manager. Interfaces, abstract classes, local classes and
   types that are not public (including a public nested type inside a non-public outer type) fail
   augmentation. Static methods are ignored. Bridge and synthetic methods are ignored so generic
   overrides keep the specialized signature.

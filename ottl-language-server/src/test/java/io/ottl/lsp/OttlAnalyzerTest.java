@@ -108,6 +108,17 @@ class OttlAnalyzerTest {
     // ----- completion -----
 
     @Test
+    void enumConstantIsAValueAndNotAContext() {
+        assertThat(analyzer.diagnose(doc("set(order.status, OrderStatus.PENDING)"))).isEmpty();
+        assertThat(analyzer.diagnose(doc("set(order.status, OrderStatus.NOPE)")))
+                .anyMatch(d -> d.getMessage().contains("Unknown enum constant 'NOPE'"));
+        assertThat(analyzer.diagnose(doc("set(OrderStatus.PENDING, 1)")))
+                .anyMatch(d -> d.getMessage().contains("not writable"));
+        assertThat(labels("OrderSt")).contains("OrderStatus");
+        assertThat(labels("set(OrderStatus.")).contains("PENDING", "PROCESSING", "COMPLETED");
+    }
+
+    @Test
     void completesTopLevelFunctionsAndKeywords() {
         List<String> labels = labels("se");
         assertThat(labels).contains("set");

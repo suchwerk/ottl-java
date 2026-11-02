@@ -41,7 +41,7 @@ class CdiIntegrationTest {
 
     @Test
     void serviceAppliesActiveRule() {
-        Order result = service.process(new Order("o", new BigDecimal("20000"), "NEW", "LOW"));
-        assertThat(result.status()).isEqualTo("REVIEW");
+        Order result = service.process(new Order("o", new BigDecimal("20000"), OrderStatus.PENDING, "LOW"));
+        assertThat(result.status()).isEqualTo(OrderStatus.PROCESSING);
     }
 }

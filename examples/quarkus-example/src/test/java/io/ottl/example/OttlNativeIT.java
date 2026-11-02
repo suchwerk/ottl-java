@@ -35,9 +35,9 @@ import static org.hamcrest.Matchers.is;
 class OttlNativeIT {
 
     private static final String HIGH_VALUE_ORDER =
-            "{\"id\":\"o-1\",\"amount\":15000,\"status\":\"NEW\",\"priority\":\"LOW\"}";
+            "{\"id\":\"o-1\",\"amount\":15000,\"status\":\"PENDING\",\"priority\":\"LOW\"}";
     private static final String LOW_VALUE_ORDER =
-            "{\"id\":\"o-2\",\"amount\":500,\"status\":\"NEW\",\"priority\":\"LOW\"}";
+            "{\"id\":\"o-2\",\"amount\":500,\"status\":\"PENDING\",\"priority\":\"LOW\"}";
 
     // ----- Test 1: initial rule -----
 
@@ -134,14 +134,14 @@ class OttlNativeIT {
     @Test
     @Order(5)
     void recordIsCopiedImmutably() {
-        given().contentType(ContentType.TEXT).body("set(order.status, \"ARCHIVED\")")
+        given().contentType(ContentType.TEXT).body("set(order.status, OrderStatus.CANCELLED)")
                 .when().put("/rules/order-rules")
                 .then().statusCode(200);
 
         given().contentType(ContentType.JSON).body(HIGH_VALUE_ORDER)
                 .when().post("/orders/transform")
                 .then().statusCode(200)
-                .body("status", is("ARCHIVED"))
+                .body("status", is("CANCELLED"))
                 .body("id", is("o-1")) // untouched components are preserved by the canonical copy
                 .body("amount", is(15000));
     }

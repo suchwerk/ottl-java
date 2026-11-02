@@ -22,6 +22,6 @@ public class OttlLspMetadataProducer {
     @Produces
     @Singleton
     public OttlMetadata ottlMetadata(OttlEngine engine) {
-        return new OttlMetadata(engine.accessorRegistry(), engine.functions());
+        return new OttlMetadata(engine.accessorRegistry(), engine.functions(), engine.enumRegistry());
     }
 }

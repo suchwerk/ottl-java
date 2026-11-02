@@ -14,7 +14,7 @@ import jakarta.enterprise.event.Observes;
 public class RuleBootstrap {
 
     static final String DEFAULT_RULE =
-            "set(order.status, \"REVIEW\") where IsHighValue(order.amount)";
+            "set(order.status, OrderStatus.PROCESSING) where IsHighValue(order.amount)";
     static final String DEFAULT_CUSTOMER_RULE =
             "set(customer.tier, \"STANDARD\")";
     static final String DEFAULT_SHIPMENT_RULE =

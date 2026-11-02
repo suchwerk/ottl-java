@@ -10,6 +10,7 @@ import io.ottl.function.FunctionRegistry;
 import io.ottl.function.OttlFunction;
 import io.ottl.lsp.metadata.OttlMetadata;
 import io.ottl.spi.DefaultPropertyAccessorRegistry;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyAccessor;
 
 import java.math.BigDecimal;
@@ -25,6 +26,12 @@ final class TestMetadata {
     }
 
     record Order(String id, BigDecimal amount, String status, String priority, Customer customer) {
+    }
+
+    public enum OrderStatus {
+        PENDING,
+        PROCESSING,
+        COMPLETED
     }
 
     private TestMetadata() {
@@ -47,7 +54,7 @@ final class TestMetadata {
                 .add(highValue())
                 .build();
 
-        return new OttlMetadata(registry, functions);
+        return new OttlMetadata(registry, functions, EnumConstantRegistry.of(OrderStatus.class));
     }
 
     private static PropertyAccessor descriptor(String descriptor) {

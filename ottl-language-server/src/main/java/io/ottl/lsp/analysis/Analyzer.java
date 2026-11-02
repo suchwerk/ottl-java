@@ -13,6 +13,7 @@ import io.ottl.lang.parser.OttlParseException;
 import io.ottl.lang.parser.Parser;
 import io.ottl.lang.parser.Token;
 import io.ottl.lang.parser.TokenType;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.lsp.metadata.FunctionInfo;
 import io.ottl.lsp.metadata.OttlMetadata;
 import io.ottl.lsp.metadata.PropertyInfo;
@@ -205,6 +206,9 @@ public final class Analyzer {
             }
         }
 
+        if (reportEnum(segTokens, isKey, write, out)) {
+            return i;
+        }
         if (context == null) {
             return i; // no context selected: cannot validate properties
         }
@@ -253,6 +257,47 @@ public final class Analyzer {
         return i;
     }
 
+    /** @return true when the path names an allowlisted enum and any problem has been reported */
+    private boolean reportEnum(List<Token> segTokens, List<Boolean> isKey, boolean write, List<Diagnostic> out) {
+        List<String> names = new ArrayList<>();
+        for (int s = 0; s < segTokens.size(); s++) {
+            if (isKey.get(s) || segTokens.get(s) == null) {
+                return false;
+            }
+            names.add(segTokens.get(s).text());
+        }
+        if (names.size() == 1) {
+            Optional<EnumConstantRegistry.EnumType> type = metadata.enumType(names.get(0));
+            if (type.isPresent() && !type.get().constants().isEmpty()) {
+                out.add(error(LspText.tokenRange(segTokens.get(0)),
+                        "Enum '" + type.get().simpleName() + "' needs a constant, for example "
+                                + type.get().simpleName() + "." + type.get().constants().get(0)));
+                return true;
+            }
+        }
+        Optional<EnumConstantRegistry.Match> match = metadata.enumReference(names);
+        if (match.isEmpty()) {
+            return false;
+        }
+        EnumConstantRegistry.Match ref = match.get();
+        if (ref.propertyAccess()) {
+            out.add(error(LspText.tokenRange(segTokens.get(segTokens.size() - 1)),
+                    "Enum " + ref.typeName() + " constants are values, not property bags"));
+            return true;
+        }
+        if (ref.value() == null) {
+            Token constant = segTokens.get(segTokens.size() - 1);
+            out.add(error(LspText.tokenRange(constant),
+                    "Unknown enum constant '" + ref.constant() + "' on " + ref.typeName()));
+            return true;
+        }
+        if (write) {
+            out.add(error(LspText.tokenRange(segTokens.get(segTokens.size() - 1)),
+                    "Enum constant '" + ref.typeName() + "." + ref.constant() + "' is not writable"));
+        }
+        return true;
+    }
+
     // =====================================================================================
     // Completion
     // =====================================================================================
@@ -272,6 +317,15 @@ public final class Analyzer {
         List<CompletionItem> items = new ArrayList<>();
         if (member) {
             List<String> baseSegs = collectBaseSegments(text, prefixStart - 1);
+            Optional<EnumConstantRegistry.EnumType> enumType = metadata.enumType(String.join(".", baseSegs));
+            if (enumType.isPresent()) {
+                for (String constant : enumType.get().constants()) {
+                    if (startsWith(constant, prefix)) {
+                        items.add(enumConstantItem(enumType.get().simpleName(), constant));
+                    }
+                }
+                return new CompletionList(false, items);
+            }
             TypeInfo target = resolvePathType(context, baseSegs);
             if (target != null) {
                 for (PropertyInfo p : target.properties()) {
@@ -295,6 +349,11 @@ public final class Analyzer {
             for (String kw : COMPLETION_KEYWORDS) {
                 if (startsWith(kw, prefix)) {
                     items.add(keywordItem(kw));
+                }
+            }
+            for (EnumConstantRegistry.EnumType type : metadata.enums()) {
+                if (startsWith(type.simpleName(), prefix)) {
+                    items.add(enumTypeItem(type));
                 }
             }
         }
@@ -348,15 +407,20 @@ public final class Analyzer {
             }
             return null;
         }
-        // Property path
+        // Property path, or an enum constant (which is not a context type).
         TypeInfo context = context(doc);
-        if (context == null) {
-            return null;
-        }
         int tokenStart = LspText.offsetAt(text, new Position(t.line() - 1, t.column() - 1));
         List<String> baseSegs = collectBaseSegments(text, tokenStart);
         List<String> chain = new ArrayList<>(baseSegs);
         chain.add(t.text());
+
+        Hover enumHover = enumHover(chain, t);
+        if (enumHover != null) {
+            return enumHover;
+        }
+        if (context == null) {
+            return null;
+        }
 
         int start = 0;
         if (!chain.isEmpty() && chain.get(0).equals(metadata.contextVariable(context))) {
@@ -535,6 +599,48 @@ public final class Analyzer {
         // Parser messages are prefixed with "[line:col] "; drop it since the range carries position.
         int close = message.indexOf("] ");
         return close > 0 && message.startsWith("[") ? message.substring(close + 2) : message;
+    }
+
+    private Hover enumHover(List<String> chain, Token token) {
+        Optional<EnumConstantRegistry.Match> match = metadata.enumReference(chain);
+        if (match.isEmpty()) {
+            Optional<EnumConstantRegistry.EnumType> type = chain.size() == 1
+                    ? metadata.enumType(chain.get(0)) : Optional.empty();
+            if (type.isEmpty()) {
+                return null;
+            }
+            return markdownHover(enumTypeHoverText(type.get()), LspText.tokenRange(token));
+        }
+        EnumConstantRegistry.Match ref = match.get();
+        if (ref.propertyAccess() || ref.value() == null) {
+            return null;
+        }
+        Optional<EnumConstantRegistry.EnumType> type = metadata.enumType(ref.typeName());
+        String fqn = type.map(EnumConstantRegistry.EnumType::fqn).orElse(ref.typeName());
+        return markdownHover("**Enum constant:** `" + ref.typeName() + "." + ref.constant() + "`\n\n"
+                + "**Declared in:** " + fqn, LspText.tokenRange(token));
+    }
+
+    private static String enumTypeHoverText(EnumConstantRegistry.EnumType type) {
+        return "**Enum:** `" + type.simpleName() + "`\n\n"
+                + "Constants are values, not properties.\n\n"
+                + "**Constants:** `" + String.join("`, `", type.constants()) + "`\n\n"
+                + "**Declared in:** " + type.fqn();
+    }
+
+    private static CompletionItem enumTypeItem(EnumConstantRegistry.EnumType type) {
+        CompletionItem item = new CompletionItem(type.simpleName());
+        item.setKind(CompletionItemKind.Enum);
+        item.setDetail("enum");
+        item.setDocumentation(new MarkupContent(MarkupKind.MARKDOWN, enumTypeHoverText(type)));
+        return item;
+    }
+
+    private static CompletionItem enumConstantItem(String typeName, String constant) {
+        CompletionItem item = new CompletionItem(constant);
+        item.setKind(CompletionItemKind.EnumMember);
+        item.setDetail(typeName);
+        return item;
     }
 
     private CompletionItem propertyItem(PropertyInfo p) {

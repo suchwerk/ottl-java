@@ -9,9 +9,11 @@ import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 /** Tests for the development-only editor API that backs the Vue/Quasar front end. */
@@ -24,6 +26,7 @@ class EditorResourceTest {
                 .then().statusCode(200)
                 .body("contexts.name", hasItem("Order"))
                 .body("contexts.name", hasItem("Customer"))
+                .body("contexts.name", not(hasItem("OrderStatus")))
                 .body("functions.name", hasItem("set"));
     }
 
@@ -47,11 +50,33 @@ class EditorResourceTest {
     }
 
     @Test
+    void enumConstantIsUsableInAnExpressionAndIsNotAContext() {
+        given().contentType(ContentType.JSON)
+                .body("{\"context\":\"Order\",\"source\":\"set(order.status, OrderStatus.COMPLETED) where order.status == OrderStatus.PENDING\"}")
+                .when().post("/editor/validate")
+                .then().statusCode(200)
+                .body("valid", is(true));
+
+        given().contentType(ContentType.JSON)
+                .body("{\"context\":\"OrderStatus\",\"source\":\"set(order.status, OrderStatus.PENDING)\"}")
+                .when().post("/editor/validate")
+                .then().statusCode(200)
+                .body("valid", is(false));
+
+        given().contentType(ContentType.JSON)
+                .body("{\"context\":\"Order\",\"source\":\"set(order.status, OrderStatus.NOPE)\"}")
+                .when().post("/editor/validate")
+                .then().statusCode(200)
+                .body("valid", is(false))
+                .body("error", containsString("Unknown enum constant"));
+    }
+
+    @Test
     void testRunsRuleAgainstSampleInput() {
         // The spec example: a high-value order gets priority HIGH.
         String body = "{\"context\":\"Order\","
                 + "\"source\":\"set(order.priority, \\\"HIGH\\\") where order.amount > 1000\","
-                + "\"input\":{\"id\":\"o-1\",\"amount\":1500,\"status\":\"NEW\",\"priority\":\"LOW\"}}";
+                + "\"input\":{\"id\":\"o-1\",\"amount\":1500,\"status\":\"PENDING\",\"priority\":\"LOW\"}}";
         given().contentType(ContentType.JSON).body(body)
                 .when().post("/editor/test")
                 .then().statusCode(200)
@@ -78,7 +103,7 @@ class EditorResourceTest {
 
             // The next execution uses the updated rule.
             given().contentType(ContentType.JSON)
-                    .body("{\"id\":\"o-2\",\"amount\":500,\"status\":\"NEW\",\"priority\":\"LOW\"}")
+                    .body("{\"id\":\"o-2\",\"amount\":500,\"status\":\"PENDING\",\"priority\":\"LOW\"}")
                     .when().post("/orders/transform")
                     .then().statusCode(200)
                     .body("priority", is("URGENT"));
@@ -86,7 +111,7 @@ class EditorResourceTest {
             // Restore the default rule so other tests stay order-independent.
             given().contentType(ContentType.JSON)
                     .body("{\"context\":\"Order\",\"ruleId\":\"order-rules\","
-                            + "\"source\":\"set(order.status, \\\"REVIEW\\\") where IsHighValue(order.amount)\"}")
+                            + "\"source\":\"set(order.status, OrderStatus.PROCESSING) where IsHighValue(order.amount)\"}")
                     .when().post("/editor/activate")
                     .then().statusCode(200);
         }

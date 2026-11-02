@@ -18,7 +18,8 @@ so you can change transformation logic without redeploying.
 ## Highlights
 
 - ✅ OTTL subset: literals, paths & nested/keyed access, comparisons, boolean logic, `where`, sequential
-  statements, `where { }` blocks, and the `set` / `delete_key` / `keep_keys` editors.
+  statements, `where { }` blocks, enum constants (`OrderStatus.PENDING`), and the `set` / `delete_key` /
+  `keep_keys` editors.
 - ✅ Two profiles: **STANDARD** (OTTL-compatible) and **JAVA** (POJOs/records/beans/JSON).
 - ✅ **MUTATE** vs **COPY** execution — records use copy-on-write, including nested records.
 - ✅ Pluggable property access (`PropertyResolver` SPI), discovered via `ServiceLoader`.

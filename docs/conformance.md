@@ -31,6 +31,7 @@ These are not part of reference OTTL. They are available in both profiles.
 | Construct | Semantics | Covered by |
 |---|---|---|
 | `where <condition> { ... }` | evaluate the condition once, then run every item in the block | `WhereBlockTest` |
+| `EnumName.CONSTANT` | allowlisted enum constant used as a value; the enum is not a context | `EnumConstantTest` |
 
 ## Known differences / gaps
 

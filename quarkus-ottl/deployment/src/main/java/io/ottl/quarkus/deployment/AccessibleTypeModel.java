@@ -50,8 +50,8 @@ final class AccessibleTypeModel {
         }
         if (type.isEnum()) {
             throw new AccessorGenerationException(
-                    "@OttlAccessible does not support enums: " + type.getName()
-                            + ". Enum constants are values, not property bags.");
+                    "@OttlAccessible enum " + type.getName()
+                            + " is a set of constants, not a property bag. It is not given an accessor or a rule manager.");
         }
         if (type.isArray() || type.isPrimitive()) {
             throw new AccessorGenerationException(
@@ -75,6 +75,33 @@ final class AccessibleTypeModel {
             if (!Modifier.isPublic(enclosing.getModifiers())) {
                 throw new AccessorGenerationException(
                         "@OttlAccessible type " + type.getName()
+                                + " is not accessible because enclosing type " + enclosing.getName()
+                                + " is not public.");
+            }
+        }
+    }
+
+    /**
+     * An enum may be {@code @OttlAccessible} so its constants can be named in expressions. It must be
+     * public because generated code in another package loads the constants directly.
+     */
+    static void validateEnum(Class<?> type) {
+        if (!type.isEnum()) {
+            throw new AccessorGenerationException(type.getName() + " is not an enum");
+        }
+        if (type.isAnonymousClass() || type.isLocalClass()) {
+            throw new AccessorGenerationException(
+                    "@OttlAccessible does not support local or anonymous enums: " + type.getName());
+        }
+        if (!Modifier.isPublic(type.getModifiers())) {
+            throw new AccessorGenerationException(
+                    "@OttlAccessible enum " + type.getName()
+                            + " is not public. Generated code lives in another package and can only reference public enums.");
+        }
+        for (Class<?> enclosing = type.getEnclosingClass(); enclosing != null; enclosing = enclosing.getEnclosingClass()) {
+            if (!Modifier.isPublic(enclosing.getModifiers())) {
+                throw new AccessorGenerationException(
+                        "@OttlAccessible enum " + type.getName()
                                 + " is not accessible because enclosing type " + enclosing.getName()
                                 + " is not public.");
             }

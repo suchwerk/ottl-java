@@ -16,6 +16,7 @@ import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
 import io.ottl.lang.ast.WhereBlock;
+import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.ResolverRegistry;
 
 import java.util.ArrayList;
@@ -33,21 +34,24 @@ public final class CompiledProgram<T> implements OttlProgram<T> {
     private final ResolverRegistry resolvers;
     private final FunctionRegistry functions;
     private final ExecutionMode mode;
+    private final EnumConstantRegistry enums;
 
     public CompiledProgram(String source, OttlScript script, String contextName,
-                           ResolverRegistry resolvers, FunctionRegistry functions, ExecutionMode mode) {
+                           ResolverRegistry resolvers, FunctionRegistry functions, ExecutionMode mode,
+                           EnumConstantRegistry enums) {
         this.source = source;
         this.script = script;
         this.contextName = contextName;
         this.resolvers = resolvers;
         this.functions = functions;
         this.mode = mode;
+        this.enums = enums == null ? EnumConstantRegistry.empty() : enums;
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public T apply(T input) {
-        ExecutionContext ctx = new ExecutionContext(input, contextName, resolvers, functions, mode);
+        ExecutionContext ctx = new ExecutionContext(input, contextName, resolvers, functions, mode, enums);
         execute(ctx, script.statements());
         return (T) ctx.root();
     }
