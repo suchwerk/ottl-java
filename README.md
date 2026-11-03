@@ -261,13 +261,23 @@ registry — the language is **not** reimplemented in JavaScript. It is served o
 WebSocket** (`ws://localhost:8080/ottl/lsp`, one isolated session per client, no stdio framing), and a
 small **Vue 3 / Quasar / Monaco** app consumes it with `monaco-languageclient`.
 
-```bash
-# backend (REST + LSP WebSocket)
-./mvnw -pl examples/quarkus-example quarkus:dev
+Run the two processes in separate terminals. The editor on port 5173 proxies the language server
+and the `/editor` API to the Quarkus app, so start the backend first and wait until it is listening
+on port 8080.
 
-# front end (Vue/Quasar/Monaco) on :5173, proxying REST + WS to :8080
-cd examples/ottl-editor && npm install && npm run dev   # open http://localhost:5173
+```bash
+# terminal 1 — backend (REST + LSP WebSocket), from the repo root
+./mvnw -pl examples/quarkus-example -am quarkus:dev
 ```
+
+```bash
+# terminal 2 — Vue/Quasar/Monaco editor. Requires Node 22.12, 24, or 26+.
+cd examples/ottl-editor
+npm install
+npm run dev
+```
+
+Open http://localhost:5173.
 
 The editor lists runtime rules, offers a context/sample-input panel, and can **validate**, **test**
 (run against sample JSON) and **activate** rules through dev-only `/editor/*` endpoints that reuse the

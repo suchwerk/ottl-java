@@ -621,11 +621,6 @@
     "@jsonjoy.com/buffers" "17.67.0"
     "@jsonjoy.com/codegen" "17.67.0"
 
-"@napi-rs/lzma-linux-x64-gnu@1.5.1":
-  version "1.5.1"
-  resolved "https://registry.npmjs.org/@napi-rs/lzma-linux-x64-gnu/-/lzma-linux-x64-gnu-1.5.1.tgz"
-  integrity sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==
-
 "@noble/hashes@1.8.0":
   version "1.8.0"
   resolved "https://registry.npmjs.org/@noble/hashes/-/hashes-1.8.0.tgz"
@@ -909,16 +904,6 @@
     estree-walker "^2.0.2"
     picomatch "^4.0.2"
 
-"@rollup/rollup-linux-x64-gnu@4.67.4":
-  version "4.67.4"
-  resolved "https://registry.npmjs.org/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.67.4.tgz"
-  integrity sha512-wL7MS4r0fYcxluF3ne2plofHZiB/LsqNCnyaUlyiKpAJLb6agPSFz7DEFCfkonWAZXMrLwCmC08b2ZEnEdJkog==
-
-"@rollup/rollup-linux-x64-musl@4.67.4":
-  version "4.67.4"
-  resolved "https://registry.npmjs.org/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.67.4.tgz"
-  integrity sha512-4H0XHfd2VufGjX7NjUyeue78sD0bRIoKSGjGqO+F5nSvL6jN48NAU7esdmtFEYxZXwObLtt3MJ/kHS0jASMW3g==
-
 "@types/chrome@^0.3.0":
   version "0.3.7"
   resolved "https://registry.npmjs.org/@types/chrome/-/chrome-0.3.7.tgz"
@@ -931,7 +916,7 @@
   resolved "https://registry.npmjs.org/@types/cordova/-/cordova-11.0.3.tgz"
   integrity sha512-kyuRQ40/NWQVhqGIHq78Ehu2Bf9Mlg0LhmSmis6ZFJK7z933FRfYi8tHe/k/0fB+PGfCf95rJC6TO7dopaFvAg==
 
-"@types/estree@^1.0.0", "@types/estree@^1.0.10":
+"@types/estree@^1.0.0":
   version "1.0.10"
   resolved "https://registry.npmjs.org/@types/estree/-/estree-1.0.10.tgz"
   integrity sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g==
@@ -2125,42 +2110,6 @@ rolldown@*, rolldown@^1.2.9, rolldown@~1.2.14:
     "@rolldown/binding-openharmony-arm64" "1.2.16"
     "@rolldown/binding-win32-arm64-msvc" "1.2.16"
     "@rolldown/binding-win32-x64-msvc" "1.2.16"
-
-rollup@*, rollup@^1.20.0||^2.0.0||^3.0.0||^4.0.0:
-  version "4.67.4"
-  resolved "https://registry.npmjs.org/rollup/-/rollup-4.67.4.tgz"
-  integrity sha512-Lsv3oKcz5jgOQJej/p7nfwbVEdAbDT+z6OPf/SCdI+nF+q2ENp0pTKT35ZwXAmH8g45mfrIiJeEyAqKYSYoL9Q==
-  dependencies:
-    "@types/estree" "^1.0.10"
-  optionalDependencies:
-    "@napi-rs/lzma-linux-x64-gnu" "1.5.1"
-    "@rollup/rollup-android-arm-eabi" "4.67.4"
-    "@rollup/rollup-android-arm64" "4.67.4"
-    "@rollup/rollup-android-x64" "4.67.4"
-    "@rollup/rollup-darwin-arm64" "4.67.4"
-    "@rollup/rollup-darwin-x64" "4.67.4"
-    "@rollup/rollup-freebsd-arm64" "4.67.4"
-    "@rollup/rollup-freebsd-x64" "4.67.4"
-    "@rollup/rollup-linux-arm-gnueabihf" "4.67.4"
-    "@rollup/rollup-linux-arm-musleabihf" "4.67.4"
-    "@rollup/rollup-linux-arm64-gnu" "4.67.4"
-    "@rollup/rollup-linux-arm64-musl" "4.67.4"
-    "@rollup/rollup-linux-loong64-gnu" "4.67.4"
-    "@rollup/rollup-linux-loong64-musl" "4.67.4"
-    "@rollup/rollup-linux-ppc64-gnu" "4.67.4"
-    "@rollup/rollup-linux-ppc64-musl" "4.67.4"
-    "@rollup/rollup-linux-riscv64-gnu" "4.67.4"
-    "@rollup/rollup-linux-riscv64-musl" "4.67.4"
-    "@rollup/rollup-linux-s390x-gnu" "4.67.4"
-    "@rollup/rollup-linux-x64-gnu" "4.67.4"
-    "@rollup/rollup-linux-x64-musl" "4.67.4"
-    "@rollup/rollup-openbsd-x64" "4.67.4"
-    "@rollup/rollup-openharmony-arm64" "4.67.4"
-    "@rollup/rollup-win32-arm64-msvc" "4.67.4"
-    "@rollup/rollup-win32-ia32-msvc" "4.67.4"
-    "@rollup/rollup-win32-x64-gnu" "4.67.4"
-    "@rollup/rollup-win32-x64-msvc" "4.67.4"
-    fsevents "~2.3.2"
 
 run-applescript@^7.0.0:
   version "7.1.0"

@@ -182,6 +182,13 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>${maven-failsafe-plugin.version}</version>
                 </plugin>
+                <!-- Lets `./mvnw -pl examples/quarkus-example quarkus:dev` resolve the prefix from
+                     the repo root. The plugin is applied only by the Quarkus modules that declare it. -->
+                <plugin>
+                    <groupId>io.quarkus</groupId>
+                    <artifactId>quarkus-maven-plugin</artifactId>
+                    <version>${quarkus.platform.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
