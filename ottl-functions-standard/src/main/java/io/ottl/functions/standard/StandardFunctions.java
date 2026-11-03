@@ -26,14 +26,26 @@ public final class StandardFunctions {
                 new SetFunction(),
                 new DeleteKeyFunction(),
                 new KeepKeysFunction(),
+                new ReplaceAllMatchesFunction(),
+                new ReplaceAllPatternsFunction(),
+                new ReplaceMatchFunction(),
+                new ReplacePatternFunction(),
                 new ConcatFunction(),
+                new ConvertCaseFunction(),
                 new DoubleFunction(),
                 new IntFunction(),
+                new IsBoolFunction(),
+                new IsDoubleFunction(),
+                new IsListFunction(),
+                new IsMapFunction(),
                 new IsMatchFunction(),
+                new IsStringFunction(),
                 new LenFunction(),
                 new SplitFunction(),
                 new StringFunction(),
                 new SubstringFunction(),
-                new TrimFunction());
+                new TrimFunction(),
+                new TrimPrefixFunction(),
+                new TrimSuffixFunction());
     }
 }

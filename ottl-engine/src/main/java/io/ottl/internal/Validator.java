@@ -183,11 +183,13 @@ public final class Validator {
                     + limits.maxCallDepth() + ") at '" + call.name() + "'");
         }
         OttlFunction fn = functions.require(call.name());
-        int argc = CallBinder.expressions(fn, call).size();
+        List<Expression> bound = CallBinder.expressions(fn, call);
+        int argc = bound.size();
         if (argc < fn.minArgs() || argc > fn.maxArgs()) {
             throw new OttlCompilationException("Function '" + call.name() + "' expects between "
                     + fn.minArgs() + " and " + fn.maxArgs() + " arguments but got " + argc);
         }
+        fn.validateArguments(bound);
         for (Expression arg : call.arguments()) {
             validateExpression(arg, callDepth + 1);
         }

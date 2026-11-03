@@ -31,6 +31,10 @@ References:
 | `Len`, `Concat`, `Split`, `Substring` | byte length, join, `strings.Split`, byte window | `ConverterConformanceTest` |
 | `IsMatch`, `Trim` | unanchored match, `strings.Trim` cutset | `ConverterConformanceTest` |
 | `Int`, `Double`, `String` | collector conversions, including nil | `ConverterConformanceTest` |
+| `replace_match`, `replace_all_matches` | gobwas glob, `*` matches `/` | `StringFunctionConformanceTest` |
+| `replace_pattern`, `replace_all_patterns` | regex replace, `$1` / `$$` | `StringFunctionConformanceTest` |
+| `TrimPrefix`, `TrimSuffix`, `ConvertCase` | one affix, strcase lower/upper/snake/camel | `StringFunctionConformanceTest` |
+| `IsString`, `IsBool`, `IsDouble`, `IsList`, `IsMap` | type tests, nil is false | `StringFunctionConformanceTest` |
 
 ## ottl-java extensions
 
@@ -60,7 +64,12 @@ these differences:
   plain-versus-scientific cutoff, so some values differ in the last digit from Go's `strconv`.
 - `Int("2.0")` is an error. The collector README lists that call, and `strconv.ParseInt` rejects it.
 - `Int` and `Double` accept a `BigDecimal`, which standard OTTL does not have. `Int` truncates it
-  toward zero.
+  toward zero. `IsDouble` does not treat a `BigDecimal` as a float.
+- `replace_match` and `replace_all_matches` compile globs the way the collector does, with
+  gobwas/glob and no separators, so `*` matches `/`. The collector README still describes
+  `filepath.Match`. The optional converter argument and `replacementFormat` are not supported.
+- `replace_pattern` and `replace_all_patterns` use Java regular expressions. Replacement text
+  follows Go's `$$`, `$1`, and `${name}` rules. `mode` must be the literal `key` or `value`.
 
 ## Adding new conformance cases
 

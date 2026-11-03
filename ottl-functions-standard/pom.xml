@@ -12,9 +12,11 @@
 
     <artifactId>ottl-functions-standard</artifactId>
     <name>OTTL Java :: Standard Functions</name>
-    <description>Standard OTTL editors (set, delete_key, keep_keys) and converters (Concat,
-        Double, Int, IsMatch, Len, Split, String, Substring, Trim). Registered via ServiceLoader
-        so the plain engine discovers them. The Quarkus recorder registers the same classes explicitly.</description>
+    <description>Standard OTTL editors (set, delete_key, keep_keys, replace_match,
+        replace_all_matches, replace_pattern, replace_all_patterns) and converters (Concat,
+        ConvertCase, Double, Int, IsBool, IsDouble, IsList, IsMap, IsMatch, IsString, Len, Split,
+        String, Substring, Trim, TrimPrefix, TrimSuffix). Registered via ServiceLoader so the plain
+        engine discovers them. The Quarkus recorder registers the same classes explicitly.</description>
 
     <dependencies>
         <dependency>

@@ -27,7 +27,7 @@ extended for arbitrary Java objects and with support for runtime-updatable rules
 ottl-language            ✅ lexer, recursive-descent parser, AST (pure Java, zero deps)
 ottl-engine             ✅ evaluator, compiled programs, PropertyResolver SPI, FunctionRegistry,
                             rule manager/repository  (depends only on ottl-language)
-ottl-functions-standard ✅ set / delete_key / keep_keys, plus Concat, Double, Int, IsMatch, Len, Split, String, Substring, Trim
+ottl-functions-standard ✅ editors set / delete_key / keep_keys / replace_*, plus Concat, ConvertCase, Double, Int, IsBool, IsDouble, IsList, IsMap, IsMatch, IsString, Len, Split, String, Substring, Trim, TrimPrefix, TrimSuffix
 ottl-context-map        ✅ PropertyResolver for Map
 ottl-context-bean       ✅ PropertyResolver for POJOs (mutate) and records (copy)
 ottl-context-jackson    ✅ PropertyResolver for Jackson JsonNode
@@ -153,9 +153,11 @@ child is a **new identity** (records), the engine rebuilds the parent chain up t
 nested immutable-record updates (e.g. `set(shipment.address.city, "Berlin")`) for free.
 
 ### Functions
-`io.ottl.function.OttlFunction` covers both **editors** (`set`, `delete_key`, `keep_keys`) and
-**converters** (value functions). The shipped converters are `Concat`, `Double`, `Int`, `IsMatch`,
-`Len`, `Split`, `String`, `Substring`, and `Trim`. The `FunctionRegistry` is the **allowlist**:
+`io.ottl.function.OttlFunction` covers both **editors** (`set`, `delete_key`, `keep_keys`,
+`replace_match`, `replace_all_matches`, `replace_pattern`, `replace_all_patterns`) and
+**converters** (value functions). The shipped converters are `Concat`, `ConvertCase`, `Double`,
+`Int`, `IsBool`, `IsDouble`, `IsList`, `IsMap`, `IsMatch`, `IsString`, `Len`, `Split`, `String`,
+`Substring`, `Trim`, `TrimPrefix`, and `TrimSuffix`. The `FunctionRegistry` is the **allowlist**:
 unknown functions fail at compile time. Arguments are lazy (`Argument`), so `set`'s first argument
 can be used as an l-value path while others evaluate as r-values.
 
@@ -210,7 +212,7 @@ types with `@RegisterForReflection` (already done for `Order`).
 
 Explicitly **not** implemented (documented honestly rather than faked):
 
-- The rest of the collector converter library (`ottlfuncs` beyond `Concat`, `Double`, `Int`, `IsMatch`, `Len`, `Split`, `String`, `Substring`, and `Trim`).
+- The rest of the collector function library. Shipped today: the editors `set`, `delete_key`, `keep_keys`, `replace_match`, `replace_all_matches`, `replace_pattern`, and `replace_all_patterns`, and the converters `Concat`, `ConvertCase`, `Double`, `Int`, `IsBool`, `IsDouble`, `IsList`, `IsMap`, `IsMatch`, `IsString`, `Len`, `Split`, `String`, `Substring`, `Trim`, `TrimPrefix`, and `TrimSuffix`. The optional converter argument of the `replace_*` editors is not supported.
 - OTTL pdata contexts (span/metric/log/resource/scope) — `ottl-context-otel` is a skeleton.
 - A built-in function that accepts a lambda. The lambda syntax itself is implemented; nothing in the standard editors calls one.
 - Statement-level collector configuration (conditions list, error mode, telemetry settings). Those are Collector config, not rule syntax.

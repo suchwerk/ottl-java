@@ -6,6 +6,8 @@ package io.ottl.function;
 
 import java.util.List;
 
+import io.ottl.lang.ast.Expression;
+
 /**
  * A callable OTTL function. This single abstraction covers both <em>editors</em> (statement-level
  * functions such as {@code set}, {@code delete_key} that mutate the context and typically return
@@ -36,5 +38,13 @@ public interface OttlFunction {
     /** Maximum number of arguments (inclusive), validated at compile time. */
     default int maxArgs() {
         return Integer.MAX_VALUE;
+    }
+
+    /**
+     * Extra compile-time checks on the bound arguments. The default accepts anything whose arity
+     * is legal. Functions whose collector factory rejects a bad literal, such as {@code ConvertCase},
+     * override this.
+     */
+    default void validateArguments(List<Expression> arguments) {
     }
 }

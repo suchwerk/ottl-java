@@ -14,6 +14,10 @@ The editors shipped with the engine are:
 | `set(target, value)` | Write `value` to the path `target`. |
 | `delete_key(target, key)` | Remove one key from the map at `target`. |
 | `keep_keys(target, ["a", "b"])` | Keep only those keys. Extra keys can also be separate arguments. |
+| `replace_match(target, pattern, replacement)` | Replace the whole string when it matches the glob. `*` matches across `/`. |
+| `replace_all_matches(target, pattern, replacement)` | Do that for every string value in a map. |
+| `replace_pattern(target, regex, replacement)` | Replace every regex match. `$1` is a group and `$$` is a dollar. |
+| `replace_all_patterns(target, mode, regex, replacement)` | Do that for every map value (`"value"`) or key (`"key"`). |
 
 Other functions registered on the engine, including `@OttlFunction` methods, are called the same way. A statement name starts with a lowercase letter. A function used as a value starts with an uppercase letter. Unknown functions are rejected at compile time.
 
@@ -70,6 +74,10 @@ These value functions are included. The rest of the collector converter library 
 | `Substring(target, start, length, utf8_safe)` | Bytes from `start` for `length` bytes. `utf8_safe` defaults to false and snaps the window to character boundaries when true. |
 | `IsMatch(target, pattern)` | True if the pattern matches anywhere. Nil is false. Patterns are Java regular expressions. |
 | `Trim(target, replacement)` | Drops leading and trailing characters that appear in the cutset. The default cutset is one space. |
+| `TrimPrefix(target, prefix)` | Removes one leading copy of `prefix`. |
+| `TrimSuffix(target, suffix)` | Removes one trailing copy of `suffix`. |
+| `ConvertCase(target, toCase)` | `lower`, `upper`, `snake`, or `camel`. `camel` produces `MyMetric`. |
+| `IsString(target)`, `IsBool(target)`, `IsDouble(target)`, `IsList(target)`, `IsMap(target)` | True only for that kind of value. Nil is false. |
 | `Int(target)` | Int. Floats truncate toward zero. Nil stays nil. `Int("2.0")` is an error. |
 | `Double(target)` | Float. Nil stays nil. |
 | `String(target)` | String. Nil stays nil. A byte slice is lowercase hex. A list or map is JSON. |
