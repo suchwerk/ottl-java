@@ -12,8 +12,9 @@
 
     <artifactId>ottl-functions-standard</artifactId>
     <name>OTTL Java :: Standard Functions</name>
-    <description>Standard OTTL editor functions: set, delete_key, keep_keys. Registered via
-        ServiceLoader so they are discovered automatically by the engine.</description>
+    <description>Standard OTTL editors (set, delete_key, keep_keys) and converters (Concat,
+        Double, Int, IsMatch, Len, Split, String, Substring, Trim). Registered via ServiceLoader
+        so the plain engine discovers them. The Quarkus recorder registers the same classes explicitly.</description>
 
     <dependencies>
         <dependency>

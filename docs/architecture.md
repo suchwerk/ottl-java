@@ -16,7 +16,7 @@ extended for arbitrary Java objects and with support for runtime-updatable rules
 - Security posture that assumes rule authors are **less trusted** than application developers.
 
 **Non-goals**
-- Claiming OTTL v1 compliance. The grammar is implemented; the standard converter library and pdata contexts are not (see [Unsupported features](#8-unsupported-ottl-features)).
+- Claiming OTTL v1 compliance. The grammar and a small converter set are implemented; the rest of `ottlfuncs` and the pdata contexts are not (see [Unsupported features](#8-unsupported-ottl-features)).
 - OpenTelemetry pdata contexts (spans/metrics/logs) — module skeleton only (⛔ `ottl-context-otel`).
 - A verified native binary — the architecture is native-ready but no GraalVM/Mandrel was available to
   prove it, so native support is **not claimed** (see [§7](#7-native-image-strategy)).
@@ -27,7 +27,7 @@ extended for arbitrary Java objects and with support for runtime-updatable rules
 ottl-language            ✅ lexer, recursive-descent parser, AST (pure Java, zero deps)
 ottl-engine             ✅ evaluator, compiled programs, PropertyResolver SPI, FunctionRegistry,
                             rule manager/repository  (depends only on ottl-language)
-ottl-functions-standard ✅ set / delete_key / keep_keys  (ServiceLoader-registered)
+ottl-functions-standard ✅ set / delete_key / keep_keys, plus Concat, Double, Int, IsMatch, Len, Split, String, Substring, Trim
 ottl-context-map        ✅ PropertyResolver for Map
 ottl-context-bean       ✅ PropertyResolver for POJOs (mutate) and records (copy)
 ottl-context-jackson    ✅ PropertyResolver for Jackson JsonNode
@@ -154,9 +154,10 @@ nested immutable-record updates (e.g. `set(shipment.address.city, "Berlin")`) fo
 
 ### Functions
 `io.ottl.function.OttlFunction` covers both **editors** (`set`, `delete_key`, `keep_keys`) and
-**converters** (value functions). The `FunctionRegistry` is the **allowlist**: unknown functions fail
-at compile time. Arguments are lazy (`Argument`), so `set`'s first argument can be used as an l-value
-path while others evaluate as r-values.
+**converters** (value functions). The shipped converters are `Concat`, `Double`, `Int`, `IsMatch`,
+`Len`, `Split`, `String`, `Substring`, and `Trim`. The `FunctionRegistry` is the **allowlist**:
+unknown functions fail at compile time. Arguments are lazy (`Argument`), so `set`'s first argument
+can be used as an l-value path while others evaluate as r-values.
 
 ### Compilation & caching
 `OttlEngine.compile(...)` parses once, validates (arity, unknown functions, complexity limits), and
@@ -190,9 +191,9 @@ never recompiled per execution**. Programs are immutable and safe to share acros
   with `set` / `delete_key` / `keep_keys`). Each method gets a generated invoker that calls it
   directly. Host classes with no scope become `@Singleton`.
 - **No ServiceLoader in the extension**: the Quarkus engine uses `loadDefaults(false)` and does not
-  register SPI providers into the native image. Maps, JSON, the standard editors and discovered
-  functions are wired explicitly. Reflective bean/record resolvers stay available to the plain Java
-  library and are not installed by the extension.
+  register SPI providers into the native image. Maps, JSON, the standard editors and converters, and
+  discovered functions are wired explicitly. Reflective bean/record resolvers stay available to the
+  plain Java library and are not installed by the extension.
 
 ## 7. Native-image strategy
 
@@ -209,7 +210,7 @@ types with `@RegisterForReflection` (already done for `Order`).
 
 Explicitly **not** implemented (documented honestly rather than faked):
 
-- The standard OTTL converter library (`Len`, `Concat`, `IsMatch`, `Split`, and the rest of `ottlfuncs`). Calls to those names parse when the name is allowlisted, and they fail compilation until a function is registered.
+- The rest of the collector converter library (`ottlfuncs` beyond `Concat`, `Double`, `Int`, `IsMatch`, `Len`, `Split`, `String`, `Substring`, and `Trim`).
 - OTTL pdata contexts (span/metric/log/resource/scope) — `ottl-context-otel` is a skeleton.
 - A built-in function that accepts a lambda. The lambda syntax itself is implemented; nothing in the standard editors calls one.
 - Statement-level collector configuration (conditions list, error mode, telemetry settings). Those are Collector config, not rule syntax.
@@ -224,7 +225,7 @@ See [conformance.md](conformance.md) for the reference cases currently exercised
 
 - **Allowlists**: only registered functions are callable; only declared properties / map entries /
   record components are accessible. There is **no path to arbitrary Java method invocation**.
-- **No I/O**: expressions can only call curated functions — no file or network access.
+- **No I/O**: expressions can only call curated functions — no file or network access. `IsMatch` compiles a Java regular expression, which is not RE2 and can backtrack for a long time on a hostile pattern.
 - **Complexity bounds**: `OttlLimits` caps source length, editor-statement count (including statements
   nested in blocks and branches), path depth, and nesting of calls, `where` blocks, bare blocks, and
   `if` / `else if`. The parser enforces the same nesting limit, and refuses to recurse past 64 levels,

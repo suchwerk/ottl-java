@@ -161,7 +161,7 @@ execute: ExecutionContext per apply() → resolvers → PropertyAccessor → POJ
   and applied to every rule compiled by that engine. It is not fixed into the image.
 - Fetches the generated `PropertyAccessorRegistry` from Arc.
 - Builds the engine with `loadDefaults(false)`, the accessor registry, `strictTypes(true)`, the
-  `MapResolver` and `JsonNodeResolver`, the standard editors, and every generated `@OttlFunction`
+  `MapResolver` and `JsonNodeResolver`, the standard editors and converters, and every generated `@OttlFunction`
   invoker.
 
 Custom property resolvers are not a Quarkus extension point. Add functions with `@OttlFunction`.

@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Execution of the OTTL expression syntax: arithmetic, maps, byte slices, indexes, named
- * arguments, and lambdas. The standard converter library is still not bundled.
+ * arguments, and lambdas. Converter behavior is covered by {@code ConverterConformanceTest}.
  */
 class OttlSyntaxConformanceTest {
 

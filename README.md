@@ -20,9 +20,10 @@ so you can change transformation logic without redeploying.
 - ✅ OTTL syntax: literals (string, int, float, bool, `nil`, `0x` bytes), lists and maps, paths with
   constant or computed indexes, comparisons, boolean logic, arithmetic (`+ - * /`), named arguments,
   converter indexing, lambdas, `where`, sequential statements, `where { }` blocks, enum constants
-  (`OrderStatus.PENDING` and a bare `SPAN_KIND_SERVER` when it is unambiguous), and the `set` /
-  `delete_key` / `keep_keys` editors. The standard converter library (`Len`, `Concat`, …) is not
-  bundled. No built-in function takes a lambda.
+  (`OrderStatus.PENDING` and a bare `SPAN_KIND_SERVER` when it is unambiguous), the `set` /
+  `delete_key` / `keep_keys` editors, and the converters `Concat`, `Double`, `Int`, `IsMatch`,
+  `Len`, `Split`, `String`, `Substring`, and `Trim`. The rest of the collector converter library
+  is not bundled. No built-in function takes a lambda.
 - ✅ Optional **extended dialect** (`OttlDialect.EXTENDED`): statement blocks and `if` / `else if` /
   `else`. This is not official OTTL. The default dialect stays `OTTL`.
 - ✅ Two profiles: **STANDARD** (OTTL-compatible) and **JAVA** (POJOs/records/beans/JSON). Profiles

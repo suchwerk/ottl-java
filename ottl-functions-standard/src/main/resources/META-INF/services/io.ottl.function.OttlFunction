@@ -1,4 +1,14 @@
-# Standard OTTL editor functions, discovered by the engine via ServiceLoader.
+# Editors and converters shipped with ottl-functions-standard.
+# Keep this list aligned with StandardFunctions.all().
 io.ottl.functions.standard.SetFunction
 io.ottl.functions.standard.DeleteKeyFunction
 io.ottl.functions.standard.KeepKeysFunction
+io.ottl.functions.standard.ConcatFunction
+io.ottl.functions.standard.DoubleFunction
+io.ottl.functions.standard.IntFunction
+io.ottl.functions.standard.IsMatchFunction
+io.ottl.functions.standard.LenFunction
+io.ottl.functions.standard.SplitFunction
+io.ottl.functions.standard.StringFunction
+io.ottl.functions.standard.SubstringFunction
+io.ottl.functions.standard.TrimFunction

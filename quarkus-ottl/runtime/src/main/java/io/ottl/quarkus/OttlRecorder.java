@@ -10,9 +10,7 @@ import io.ottl.OttlEngine;
 import io.ottl.OttlLimits;
 import io.ottl.context.jackson.JsonNodeResolver;
 import io.ottl.context.map.MapResolver;
-import io.ottl.functions.standard.DeleteKeyFunction;
-import io.ottl.functions.standard.KeepKeysFunction;
-import io.ottl.functions.standard.SetFunction;
+import io.ottl.functions.standard.StandardFunctions;
 import io.ottl.rules.RuleManager;
 import io.ottl.rules.RuleRepository;
 import io.ottl.spi.EnumConstantRegistry;
@@ -29,9 +27,9 @@ import org.eclipse.microprofile.config.ConfigProvider;
  * Records construction of the shared {@link OttlEngine} at runtime init.
  *
  * <p>The engine is wired explicitly and does not call {@link java.util.ServiceLoader}. Domain
- * properties go through the generated {@link PropertyAccessorRegistry}. {@code @OttlFunction}
- * methods are invoked by generated CDI beans, not by {@code Method.invoke}. Strict type checking
- * stays on.
+ * properties go through the generated {@link PropertyAccessorRegistry}. Standard editors and
+ * converters come from {@link StandardFunctions#all()}. {@code @OttlFunction} methods are invoked
+ * by generated CDI beans, not by {@code Method.invoke}. Strict type checking stays on.
  */
 @Recorder
 public class OttlRecorder {
@@ -54,10 +52,10 @@ public class OttlRecorder {
                 .enumRegistry(enums)
                 .strictTypes(true)
                 .resolver(new MapResolver())
-                .resolver(new JsonNodeResolver())
-                .function(new SetFunction())
-                .function(new DeleteKeyFunction())
-                .function(new KeepKeysFunction());
+                .resolver(new JsonNodeResolver());
+        for (io.ottl.function.OttlFunction function : StandardFunctions.all()) {
+            builder.function(function);
+        }
 
         for (InstanceHandle<io.ottl.function.OttlFunction> handle : Arc.container()
                 .listAll(io.ottl.function.OttlFunction.class)) {

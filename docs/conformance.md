@@ -28,6 +28,9 @@ References:
 | converter and path indexes | `Words("a,b")[1]`, `attributes[name]` | `OttlSyntaxConformanceTest` |
 | lambdas | value, read-only parameters; no standard caller | `OttlSyntaxConformanceTest.lambdaAppliesWithOuterCapture` |
 | keyed/indexed paths `a["k"][0]` | nested access | `ParserTest.parsesKeyedPathAndIntKeys` |
+| `Len`, `Concat`, `Split`, `Substring` | byte length, join, `strings.Split`, byte window | `ConverterConformanceTest` |
+| `IsMatch`, `Trim` | unanchored match, `strings.Trim` cutset | `ConverterConformanceTest` |
+| `Int`, `Double`, `String` | collector conversions, including nil | `ConverterConformanceTest` |
 
 ## ottl-java extensions
 
@@ -41,9 +44,23 @@ These are not part of reference OTTL. They are available in both profiles.
 
 ## Known differences / gaps
 
-See [architecture.md §8](architecture.md#8-unsupported-ottl-features). Notably: the standard converter
-library and OTTL pdata contexts are not yet implemented. These should be added behind the STANDARD
-profile and verified against reference fixtures before any "v1 compliance" is claimed.
+See [architecture.md §8](architecture.md#8-unsupported-ottl-features). The rest of `ottlfuncs` and the
+OTTL pdata contexts are not implemented. These should be added behind the STANDARD profile and
+verified against reference fixtures before any "v1 compliance" is claimed.
+
+`ConverterConformanceTest` follows the collector implementations of the nine shipped converters, with
+these differences:
+
+- `IsMatch` uses Java regular expressions, not RE2. Named groups are `(?<name>...)`. A pattern that
+  fails to compile is an evaluation error, and a hostile pattern can backtrack for a long time.
+- `Len` and `Substring` count UTF-8 bytes. A `Substring` window that splits a character is decoded
+  with Java's UTF-8 decoder, which replaces an incomplete sequence with U+FFFD. Go keeps the raw bytes.
+- `String` encodes lists and maps as JSON with sorted keys and no extra spaces. A byte slice is
+  lowercase hex. Number text uses Java's `Double.toString`, adjusted to `encoding/json`'s
+  plain-versus-scientific cutoff, so some values differ in the last digit from Go's `strconv`.
+- `Int("2.0")` is an error. The collector README lists that call, and `strconv.ParseInt` rejects it.
+- `Int` and `Double` accept a `BigDecimal`, which standard OTTL does not have. `Int` truncates it
+  toward zero.
 
 ## Adding new conformance cases
 

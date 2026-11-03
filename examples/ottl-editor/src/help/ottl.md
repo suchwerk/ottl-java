@@ -56,7 +56,28 @@ Words("a,b,c")[1]
 
 The first segment may be the context name. `order.status` and `status` address the same property when the root is an `Order`.
 
-A converter name starts with an uppercase letter. An editor name starts with a lowercase letter, so `set(...)` is a statement and `Len(...)` would be a value.
+A converter name starts with an uppercase letter. An editor name starts with a lowercase letter, so `set(...)` is a statement and `Len(...)` is a value.
+
+# Converters
+
+These value functions are included. The rest of the collector converter library is not.
+
+| Call | Result |
+| --- | --- |
+| `Concat(vals, delimiter)` | Joins the string form of each list item. A nil item contributes a space. |
+| `Len(target)` | UTF-8 byte length of a string, or the number of entries in a list, map, or byte slice. |
+| `Split(target, delimiter)` | List of pieces. An empty delimiter splits into characters. `Split("a-b", "-")[1]` is `"b"`. |
+| `Substring(target, start, length, utf8_safe)` | Bytes from `start` for `length` bytes. `utf8_safe` defaults to false and snaps the window to character boundaries when true. |
+| `IsMatch(target, pattern)` | True if the pattern matches anywhere. Nil is false. Patterns are Java regular expressions. |
+| `Trim(target, replacement)` | Drops leading and trailing characters that appear in the cutset. The default cutset is one space. |
+| `Int(target)` | Int. Floats truncate toward zero. Nil stays nil. `Int("2.0")` is an error. |
+| `Double(target)` | Float. Nil stays nil. |
+| `String(target)` | String. Nil stays nil. A byte slice is lowercase hex. A list or map is JSON. |
+
+```
+set(order.priority, "HIGH") where Len(order.id) > 0 and IsMatch(order.status, "^P")
+set(attributes["host"], Split(attributes["host"], ":")[0])
+```
 
 # Named arguments
 
@@ -99,6 +120,6 @@ where order.amount > 1000 {
 
 Bare `{ ... }` blocks and `if` / `else` belong to the extended dialect. In the OTTL dialect, `if(...)` is an ordinary function call, not a keyword.
 
-The standard converter library (`Len`, `Concat`, `IsMatch`, and the rest) is not bundled. A lambda is a value, and no editor shipped with the engine calls one.
+A lambda is a value, and no function shipped with the engine calls one. Converters other than the ones listed above are not included.
 
 `let`, `switch`, and loops are not part of the language.
