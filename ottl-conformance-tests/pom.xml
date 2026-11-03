@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.ottl</groupId>
+        <groupId>de.suchwerk.ottl</groupId>
         <artifactId>ottl-java-parent</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
@@ -18,27 +18,27 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-engine</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-functions-standard</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-context-map</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-context-bean</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-context-jackson</artifactId>
             <scope>test</scope>
         </dependency>
@@ -48,4 +48,23 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <!-- Conformance tests are not a published library. -->
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <inherited>false</inherited>
+                        <configuration>
+                            <skipPublishing>true</skipPublishing>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

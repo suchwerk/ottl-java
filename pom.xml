@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.ottl</groupId>
+    <groupId>de.suchwerk.ottl</groupId>
     <artifactId>ottl-java-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -12,7 +12,7 @@
     <name>OTTL Java :: Parent</name>
     <description>Native Java implementation of the OpenTelemetry Transformation Language (OTTL),
         extended for arbitrary Java objects, with runtime-updatable rules and Quarkus support.</description>
-    <url>https://github.com/ottl-java/ottl-java</url>
+    <url>https://github.com/suchwerk/ottl-java</url>
 
     <licenses>
         <license>
@@ -21,6 +21,23 @@
             <distribution>repo</distribution>
         </license>
     </licenses>
+
+    <developers>
+        <developer>
+            <id>jkubuschok</id>
+            <name>Jan Kubuschok</name>
+            <email>jk@suchwerk.de</email>
+            <organization>Suchwerk</organization>
+            <organizationUrl>https://suchwerk.de</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/suchwerk/ottl-java.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/suchwerk/ottl-java.git</developerConnection>
+        <url>https://github.com/suchwerk/ottl-java</url>
+        <tag>HEAD</tag>
+    </scm>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
@@ -40,6 +57,11 @@
         <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
         <compiler-plugin.version>3.13.0</compiler-plugin.version>
         <surefire-plugin.version>3.5.2</surefire-plugin.version>
+        <central-publishing-maven-plugin.version>0.12.0</central-publishing-maven-plugin.version>
+        <flatten-maven-plugin.version>1.7.0</flatten-maven-plugin.version>
+        <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.11.2</maven-javadoc-plugin.version>
+        <maven-gpg-plugin.version>3.2.7</maven-gpg-plugin.version>
     </properties>
 
     <modules>
@@ -62,57 +84,57 @@
         <dependencies>
             <!-- Internal modules -->
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-language</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-engine</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-functions-standard</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-context-map</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-context-bean</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-context-jackson</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-context-otel</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>quarkus-ottl</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>quarkus-ottl-deployment</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-language-server</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.ottl</groupId>
+                <groupId>de.suchwerk.ottl</groupId>
                 <artifactId>ottl-lsp-quarkus</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -189,6 +211,11 @@
                     <artifactId>quarkus-maven-plugin</artifactId>
                     <version>${quarkus.platform.version}</version>
                 </plugin>
+                <plugin>
+                    <groupId>org.sonatype.central</groupId>
+                    <artifactId>central-publishing-maven-plugin</artifactId>
+                    <version>${central-publishing-maven-plugin.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
@@ -198,4 +225,107 @@
             </plugin>
         </plugins>
     </build>
+
+    <!--
+      Release profile: sources, javadoc, GPG signatures, a consumer POM, and upload to Maven Central.
+      Activate with scripts/publish-central.sh. Normal ./mvnw verify does not sign or upload.
+    -->
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>flatten-maven-plugin</artifactId>
+                        <version>${flatten-maven-plugin.version}</version>
+                        <configuration>
+                            <updatePomFile>true</updatePomFile>
+                            <flattenMode>ossrh</flattenMode>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>flatten</id>
+                                <phase>process-resources</phase>
+                                <goals>
+                                    <goal>flatten</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>flatten.clean</id>
+                                <phase>clean</phase>
+                                <goals>
+                                    <goal>clean</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven-source-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven-javadoc-plugin.version}</version>
+                        <configuration>
+                            <source>${maven.compiler.release}</source>
+                            <doclint>none</doclint>
+                            <failOnError>true</failOnError>
+                            <quiet>true</quiet>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven-gpg-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                                <configuration>
+                                    <passphraseEnvName>GPG_PASSPHRASE</passphraseEnvName>
+                                    <gpgArguments>
+                                        <arg>--pinentry-mode</arg>
+                                        <arg>loopback</arg>
+                                    </gpgArguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
+                            <deploymentName>ottl-java-${project.version}</deploymentName>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

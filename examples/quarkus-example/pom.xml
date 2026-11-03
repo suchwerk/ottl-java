@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.ottl</groupId>
+        <groupId>de.suchwerk.ottl</groupId>
         <artifactId>ottl-java-parent</artifactId>
         <version>0.1.0-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
@@ -44,11 +44,11 @@
         </dependency>
 
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>quarkus-ottl</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-lsp-quarkus</artifactId>
         </dependency>
 
@@ -140,6 +140,22 @@
                 <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
                 <quarkus.native.container-build>true</quarkus.native.container-build>
             </properties>
+        </profile>
+        <!-- The example application is not a published library. -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <inherited>false</inherited>
+                        <configuration>
+                            <skipPublishing>true</skipPublishing>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 </project>

@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.ottl</groupId>
+        <groupId>de.suchwerk.ottl</groupId>
         <artifactId>ottl-java-parent</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
@@ -13,9 +13,29 @@
     <artifactId>quarkus-ottl-build-parent</artifactId>
     <packaging>pom</packaging>
     <name>OTTL Java :: Quarkus Extension (parent)</name>
+    <description>Aggregator for the Quarkus extension runtime and deployment modules. Not published.</description>
 
     <modules>
         <module>runtime</module>
         <module>deployment</module>
     </modules>
+
+    <!-- Aggregator only. runtime and deployment are the published artifacts. -->
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <inherited>false</inherited>
+                        <configuration>
+                            <skipPublishing>true</skipPublishing>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

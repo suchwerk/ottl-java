@@ -98,11 +98,17 @@ If the new source fails to compile, the previous version is retained.
 Add the extension:
 ```xml
 <dependency>
-  <groupId>io.ottl</groupId>
+  <groupId>de.suchwerk.ottl</groupId>
   <artifactId>quarkus-ottl</artifactId>
   <version>0.1.0-SNAPSHOT</version>
 </dependency>
 ```
+
+Java packages stay `io.ottl`. The Maven group id is `de.suchwerk.ottl`, which is the
+[Maven Central](https://central.sonatype.com) namespace for `suchwerk.de`. Until a release is
+published, install the jars locally with `./mvnw install` and depend on `0.1.0-SNAPSHOT`.
+A published release uses a version such as `0.1.0`. The editor is not a Maven artifact. See
+[Publishing](#publishing-to-maven-central).
 
 Inject the engine and a rule manager. The extension supplies {@code RuleManager<T>} for every
 {@code @OttlAccessible} type, so no producer is required for the common case. A hand-written
@@ -299,6 +305,36 @@ Module responsibilities are summarized in [docs/architecture.md §2](docs/archit
 The repository is configured for Cursor Agent with the official Quarkus Agent MCP server
 (`.cursor/mcp.json`); see [.cursor/rules](.cursor/rules) for project conventions and how to verify MCP
 connectivity.
+
+## Publishing to Maven Central
+
+The release profile signs the library jars and uploads them with the Central Publishing plugin.
+It does not publish the example application, the editor, conformance tests, benchmarks, or the
+OpenTelemetry context skeleton. `./mvnw verify` does not use this profile.
+
+Before the first release, register the namespace `de.suchwerk` at
+[central.sonatype.com](https://central.sonatype.com) and prove it with the DNS TXT record Central
+gives you on `suchwerk.de`. Generate a user token there, and create a GPG key whose public key is
+on a keyserver Central can see.
+
+GitHub Actions publishes when you publish a GitHub Release whose tag is `v0.1.0` (the `v` is
+stripped). You can also run the workflow by hand and type the version. Add these repository
+secrets: `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY` (armored private key), and
+`GPG_PASSPHRASE`.
+
+From a clean checkout, the same script publishes locally:
+
+```bash
+export CENTRAL_USERNAME=...
+export CENTRAL_PASSWORD=...
+export GPG_PASSPHRASE=...
+./scripts/publish-central.sh --version 0.1.0
+```
+
+`--skip-upload` writes `target/central-publishing/central-bundle.zip` and does not contact Central.
+The script rewrites the POMs to the release version in the working tree and does not commit. The
+branch stays on `0.1.0-SNAPSHOT`; restore the rewrite with `git restore .` if you do not want to
+keep it.
 
 ## Contributing
 

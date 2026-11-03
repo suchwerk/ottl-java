@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.ottl</groupId>
+        <groupId>de.suchwerk.ottl</groupId>
         <artifactId>ottl-java-parent</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
@@ -15,10 +15,34 @@
     <description>SKELETON ONLY. Will provide PropertyResolvers over OpenTelemetry pdata
         (spans, metrics, logs) for STANDARD-profile parity. Not implemented in the MVP.</description>
 
+    <properties>
+        <!-- package-info only; javadoc has nothing public to document. Not published. -->
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+    </properties>
+
     <dependencies>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-engine</artifactId>
         </dependency>
     </dependencies>
+
+    <!-- Skeleton only. Do not publish it as a working context. -->
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <inherited>false</inherited>
+                        <configuration>
+                            <skipPublishing>true</skipPublishing>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

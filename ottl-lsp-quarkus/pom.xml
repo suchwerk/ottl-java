@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.ottl</groupId>
+        <groupId>de.suchwerk.ottl</groupId>
         <artifactId>ottl-java-parent</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
@@ -30,11 +30,11 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>ottl-language-server</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.ottl</groupId>
+            <groupId>de.suchwerk.ottl</groupId>
             <artifactId>quarkus-ottl</artifactId>
         </dependency>
 
