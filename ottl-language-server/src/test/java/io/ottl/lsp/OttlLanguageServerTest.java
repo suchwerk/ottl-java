@@ -14,6 +14,7 @@ import org.eclipse.lsp4j.MessageActionItem;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
+import org.eclipse.lsp4j.SetTraceParams;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
@@ -82,6 +83,13 @@ class OttlLanguageServerTest {
 
     private static DidOpenTextDocumentParams open(String uri, String text, int version) {
         return new DidOpenTextDocumentParams(new TextDocumentItem(uri, "ottl", version, text));
+    }
+
+    @Test
+    void setTraceAcceptsTheClientNotification() {
+        OttlLanguageServer server = newServer(new FakeClient());
+        server.setTrace(new SetTraceParams("off"));
+        assertThat(server.trace()).isEqualTo("off");
     }
 
     @Test

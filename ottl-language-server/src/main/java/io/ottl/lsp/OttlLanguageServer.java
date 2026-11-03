@@ -10,8 +10,10 @@ import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.ServerCapabilities;
+import org.eclipse.lsp4j.SetTraceParams;
 import org.eclipse.lsp4j.SignatureHelpOptions;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
+import org.eclipse.lsp4j.TraceValue;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
@@ -31,6 +33,7 @@ public class OttlLanguageServer implements LanguageServer, LanguageClientAware {
     private final OttlTextDocumentService textDocumentService;
     private final OttlWorkspaceService workspaceService = new OttlWorkspaceService();
     private volatile boolean shutdown;
+    private volatile String trace = TraceValue.Off;
 
     public OttlLanguageServer(OttlMetadata metadata, Executor executor) {
         this.textDocumentService = new OttlTextDocumentService(new Analyzer(metadata), executor);
@@ -52,6 +55,17 @@ public class OttlLanguageServer implements LanguageServer, LanguageClientAware {
     @Override
     public void initialized(org.eclipse.lsp4j.InitializedParams params) {
         // nothing further to register
+    }
+
+    /**
+     * Monaco sends {@code $/setTrace} right after connect. The lsp4j default throws
+     * {@link UnsupportedOperationException}, which the JSON-RPC layer logs as a failed notification.
+     */
+    @Override
+    public void setTrace(SetTraceParams params) {
+        if (params != null && params.getValue() != null) {
+            trace = params.getValue();
+        }
     }
 
     @Override
@@ -82,6 +96,11 @@ public class OttlLanguageServer implements LanguageServer, LanguageClientAware {
 
     public boolean isShutdown() {
         return shutdown;
+    }
+
+    /** Latest {@code $/setTrace} value. {@code off}, {@code messages}, or {@code verbose}. */
+    public String trace() {
+        return trace;
     }
 
     public OttlTextDocumentService textDocuments() {
