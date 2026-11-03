@@ -261,6 +261,8 @@ registry — the language is **not** reimplemented in JavaScript. It is served o
 WebSocket** (`ws://localhost:8080/ottl/lsp`, one isolated session per client, no stdio framing), and a
 small **Vue 3 / Quasar / Monaco** app consumes it with `monaco-languageclient`.
 
+![OTTL Rule Editor with property completion on an Order and a test run that sets status to PROCESSING and priority to HIGH](docs/images/rule-editor.png)
+
 Run the two processes in separate terminals. The editor on port 5173 proxies the language server
 and the `/editor` API to the Quarkus app, so start the backend first and wait until it is listening
 on port 8080.
