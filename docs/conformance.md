@@ -35,6 +35,12 @@ References:
 | `replace_pattern`, `replace_all_patterns` | regex replace, `$1` / `$$` | `StringFunctionConformanceTest` |
 | `TrimPrefix`, `TrimSuffix`, `ConvertCase` | one affix, strcase lower/upper/snake/camel | `StringFunctionConformanceTest` |
 | `IsString`, `IsBool`, `IsDouble`, `IsList`, `IsMap` | type tests, nil is false | `StringFunctionConformanceTest` |
+| `append`, `clear`, `delete_index` | list append, zero values, half-open slice delete | `CollectionEditorConformanceTest` |
+| `delete_matching_keys`, `keep_matching_keys` | unanchored key regex | `CollectionEditorConformanceTest` |
+| `flatten` | nested maps and lists, UTF-8 key order, conflict suffixes | `CollectionEditorConformanceTest` |
+| `limit` | priority keys, then UTF-8 order up to the limit | `CollectionEditorConformanceTest` |
+| `merge_maps` | `insert`, `update`, `upsert` | `CollectionEditorConformanceTest` |
+| `stringify_all`, `truncate_all` | string form of values, UTF-8 byte limit | `CollectionEditorConformanceTest` |
 
 ## ottl-java extensions
 
@@ -52,8 +58,8 @@ See [architecture.md §8](architecture.md#8-unsupported-ottl-features). The rest
 OTTL pdata contexts are not implemented. These should be added behind the STANDARD profile and
 verified against reference fixtures before any "v1 compliance" is claimed.
 
-`ConverterConformanceTest` follows the collector implementations of the nine shipped converters, with
-these differences:
+`ConverterConformanceTest`, `StringFunctionConformanceTest`, and `CollectionEditorConformanceTest`
+follow the collector implementations of the shipped functions, with these differences:
 
 - `IsMatch` uses Java regular expressions, not RE2. Named groups are `(?<name>...)`. A pattern that
   fails to compile is an evaluation error, and a hostile pattern can backtrack for a long time.
@@ -70,6 +76,23 @@ these differences:
   `filepath.Match`. The optional converter argument and `replacementFormat` are not supported.
 - `replace_pattern` and `replace_all_patterns` use Java regular expressions. Replacement text
   follows Go's `$$`, `$1`, and `${name}` rules. `mode` must be the literal `key` or `value`.
+- `delete_matching_keys` and `keep_matching_keys` use Java regular expressions. A match may start
+  anywhere in the key, as with `IsMatch`.
+- `flatten` visits keys in UTF-8 order. `depth` must be greater than 0; a depth of 0 is a compile
+  error. `prefix`, `depth`, and `resolveConflicts` are literals. With `resolveConflicts`, the first
+  value keeps the key and later values are written at `key.0`, `key.1`, and so on.
+- `limit` keeps every listed priority key, then keeps other keys in UTF-8 order until the limit.
+  The collector README describes the drop as random; a pdata map walks keys in sorted order, and
+  this engine does the same. `limit` is an int literal and must be at least the number of priority
+  keys. The parameter name is `priorityKeys`.
+- `truncate_all` counts UTF-8 bytes. `utf8Safe` defaults to true. With `utf8Safe` false, a cut that
+  splits a character is decoded with Java's UTF-8 decoder, which replaces the incomplete sequence
+  with U+FFFD. Go keeps that raw byte. `truncationMarker` counts against the limit. The parameter
+  names are `utf8Safe` and `truncationMarker`.
+- `clear` turns a map into an empty map and a list into an empty list. A byte slice becomes nil.
+  A string, int, float, or bool becomes its zero value. Any other object becomes nil.
+- `append` rejects a map target. `values` appends each element of the list. At least one of
+  `value` or `values` is required. An optional parameter may be omitted when a later one is named.
 
 ## Adding new conformance cases
 

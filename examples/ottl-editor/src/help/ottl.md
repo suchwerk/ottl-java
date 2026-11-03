@@ -14,6 +14,16 @@ The editors shipped with the engine are:
 | `set(target, value)` | Write `value` to the path `target`. |
 | `delete_key(target, key)` | Remove one key from the map at `target`. |
 | `keep_keys(target, ["a", "b"])` | Keep only those keys. Extra keys can also be separate arguments. |
+| `append(target, value, values)` | Append to the list at `target`. A scalar becomes the first element. At least one of `value` or `values` is required. |
+| `clear(target)` | Write the zero value. A map becomes empty and a list becomes empty. |
+| `delete_index(target, start, end)` | Remove list elements from `start` inclusive to `end` exclusive. `end` defaults to the next index. |
+| `delete_matching_keys(target, pattern)` | Remove keys that match the regular expression. |
+| `keep_matching_keys(target, pattern)` | Keep keys that match the regular expression. |
+| `flatten(target, prefix, depth, resolveConflicts)` | Lift nested maps and lists. `depth` must be greater than 0. `flatten(body, depth=2)` skips the earlier optionals. |
+| `limit(target, limit, priorityKeys)` | Drop entries until at most `limit` remain. Listed keys are kept. |
+| `merge_maps(target, source, strategy)` | `insert`, `update`, or `upsert`. |
+| `stringify_all(target)` | Turn every non-string map value into a string. A byte slice is Base64. |
+| `truncate_all(target, limit, utf8Safe, truncationMarker)` | Shorten string values to `limit` UTF-8 bytes. `utf8Safe` defaults to true. |
 | `replace_match(target, pattern, replacement)` | Replace the whole string when it matches the glob. `*` matches across `/`. |
 | `replace_all_matches(target, pattern, replacement)` | Do that for every string value in a map. |
 | `replace_pattern(target, regex, replacement)` | Replace every regex match. `$1` is a group and `$$` is a dollar. |

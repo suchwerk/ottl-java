@@ -198,6 +198,14 @@ class ParserTest {
     }
 
     @Test
+    void parsesCamelCaseNamedArguments() {
+        Statement stmt = Parser.parseStatement("flatten(attributes, depth=2, resolveConflicts=true)");
+        assertThat(stmt.editor().name()).isEqualTo("flatten");
+        assertThat(stmt.editor().argumentNames()).containsExactly(
+                Optional.empty(), Optional.of("depth"), Optional.of("resolveConflicts"));
+    }
+
+    @Test
     void parsesConverterIndexDynamicKeyAndLambda() {
         Statement stmt = Parser.parseStatement(
                 "set(x, Split(field, \",\")[1][name + 1]) where y == (value) => value == 1");

@@ -94,6 +94,70 @@ final class StandardValues {
         return value.getBytes(StandardCharsets.UTF_8).length;
     }
 
+    /** Byte-wise order, matching pdata map iteration and {@code encoding/json} key order. */
+    static int compareUtf8(String left, String right) {
+        return Arrays.compare(left.getBytes(StandardCharsets.UTF_8), right.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Truncate {@code value} so its UTF-8 encoding is at most {@code limit} bytes, then append
+     * {@code marker}. When {@code utf8Safe} is set, the cut backs up to a rune boundary. When it
+     * is not, a cut that splits a character is decoded with Java's UTF-8 decoder, which replaces
+     * the incomplete sequence with U+FFFD. Go keeps that raw byte.
+     */
+    static String truncate(String value, long limit, boolean utf8Safe, String marker) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length <= limit) {
+            return value;
+        }
+        byte[] markerBytes = marker.getBytes(StandardCharsets.UTF_8);
+        int truncateAt = (int) limit - markerBytes.length;
+        if (utf8Safe) {
+            while (truncateAt > 0 && !isRuneStart(bytes[truncateAt])) {
+                truncateAt--;
+            }
+        }
+        return new String(bytes, 0, Math.max(truncateAt, 0), StandardCharsets.UTF_8) + marker;
+    }
+
+    /** Deep copy of maps, lists, and byte slices. Scalars are returned as-is. Cycles fail. */
+    static Object copy(Object value) {
+        return copy(value, new IdentityHashMap<>());
+    }
+
+    static Object copy(Object value, IdentityHashMap<Object, Boolean> seen) {
+        if (value instanceof byte[] bytes) {
+            return bytes.clone();
+        }
+        if (!(value instanceof Map<?, ?>) && !(value instanceof List<?>)) {
+            return value;
+        }
+        if (seen.containsKey(value)) {
+            throw new OttlEvaluationException("cyclic value");
+        }
+        seen.put(value, Boolean.TRUE);
+        try {
+            if (value instanceof Map<?, ?> map) {
+                Map<String, Object> out = new java.util.LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    if (!(entry.getKey() instanceof String key)) {
+                        throw new OttlEvaluationException("map key must be a string");
+                    }
+                    out.put(key, copy(entry.getValue(), seen));
+                }
+                return out;
+            }
+            List<?> list = (List<?>) value;
+            List<Object> out = new ArrayList<>(list.size());
+            for (Object element : list) {
+                out.add(copy(element, seen));
+            }
+            return out;
+        } finally {
+            seen.remove(value);
+        }
+    }
+
     /**
      * Collector {@code StringLikeGetter}: strings pass through, byte slices are lowercase hex,
      * and everything else is JSON. Nil is not a string.

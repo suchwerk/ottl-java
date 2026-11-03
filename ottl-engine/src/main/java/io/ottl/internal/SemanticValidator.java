@@ -61,7 +61,10 @@ public final class SemanticValidator {
             case Statement stmt -> {
                 List<Expression> args = CallBinder.expressions(functions.require(stmt.editor().name()), stmt.editor());
                 for (int i = 0; i < args.size(); i++) {
-                    // By convention the first argument of set/delete_key/keep_keys is the write target.
+                    if (args.get(i) == null) {
+                        continue;
+                    }
+                    // By convention the first argument of an editor is the write target.
                     validateExpression(args.get(i), rootType, contextName, i == 0, scopes);
                 }
                 stmt.condition().ifPresent(c -> validateCondition(c, rootType, contextName, scopes));

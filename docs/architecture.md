@@ -27,7 +27,7 @@ extended for arbitrary Java objects and with support for runtime-updatable rules
 ottl-language            ✅ lexer, recursive-descent parser, AST (pure Java, zero deps)
 ottl-engine             ✅ evaluator, compiled programs, PropertyResolver SPI, FunctionRegistry,
                             rule manager/repository  (depends only on ottl-language)
-ottl-functions-standard ✅ editors set / delete_key / keep_keys / replace_*, plus Concat, ConvertCase, Double, Int, IsBool, IsDouble, IsList, IsMap, IsMatch, IsString, Len, Split, String, Substring, Trim, TrimPrefix, TrimSuffix
+ottl-functions-standard ✅ editors set / delete_key / keep_keys / append / clear / delete_index / delete_matching_keys / keep_matching_keys / flatten / limit / merge_maps / stringify_all / truncate_all / replace_*, plus Concat, ConvertCase, Double, Int, IsBool, IsDouble, IsList, IsMap, IsMatch, IsString, Len, Split, String, Substring, Trim, TrimPrefix, TrimSuffix
 ottl-context-map        ✅ PropertyResolver for Map
 ottl-context-bean       ✅ PropertyResolver for POJOs (mutate) and records (copy)
 ottl-context-jackson    ✅ PropertyResolver for Jackson JsonNode
@@ -103,7 +103,7 @@ Editor names start with a lowercase letter. Converter names start with an upperc
 
 Integer and floating-point operands are not mixed. Integer division truncates toward zero. Division by zero is an evaluation error. `BigDecimal` arithmetic is a Java addition: a decimal combines with integers and other decimals, and not with floats. `Instant` and `Duration` support `+` and `-` only.
 
-Named arguments bind to the names declared by the function (`OttlFunction.parameterNames()`). `set` accepts `target` and `value`. `delete_key` accepts `target` and `key`. `keep_keys` accepts `target` and `keys`. A function that does not declare parameter names rejects named arguments. Positional calls are unchanged, including `keep_keys(target, "a", "b")`.
+Named arguments bind to the names declared by the function (`OttlFunction.parameterNames()`). `set` accepts `target` and `value`. `delete_key` accepts `target` and `key`. `keep_keys` accepts `target` and `keys`. An optional parameter may be omitted when a later parameter is named, as in `flatten(attributes, depth=2)` or `truncate_all(attributes, 100, truncationMarker="...")`. A function that does not declare parameter names rejects named arguments. Positional calls are unchanged, including `keep_keys(target, "a", "b")`.
 
 A lambda is a value. Its parameters are lowercase identifiers, and `_` may be repeated to ignore a parameter. The body is a value (`(n) => n + 1`) or a condition (`(a, b) => a == b`). Parameters are read-only. No standard function takes a lambda; a registered function can accept the value and call it. A lambda body cannot itself be a lambda. Nested calls such as `(outer) => Apply((inner) => outer + inner, 1)` are allowed.
 
@@ -154,7 +154,9 @@ nested immutable-record updates (e.g. `set(shipment.address.city, "Berlin")`) fo
 
 ### Functions
 `io.ottl.function.OttlFunction` covers both **editors** (`set`, `delete_key`, `keep_keys`,
-`replace_match`, `replace_all_matches`, `replace_pattern`, `replace_all_patterns`) and
+`append`, `clear`, `delete_index`, `delete_matching_keys`, `keep_matching_keys`, `flatten`,
+`limit`, `merge_maps`, `stringify_all`, `truncate_all`, `replace_match`, `replace_all_matches`,
+`replace_pattern`, `replace_all_patterns`) and
 **converters** (value functions). The shipped converters are `Concat`, `ConvertCase`, `Double`,
 `Int`, `IsBool`, `IsDouble`, `IsList`, `IsMap`, `IsMatch`, `IsString`, `Len`, `Split`, `String`,
 `Substring`, `Trim`, `TrimPrefix`, and `TrimSuffix`. The `FunctionRegistry` is the **allowlist**:
@@ -212,7 +214,7 @@ types with `@RegisterForReflection` (already done for `Order`).
 
 Explicitly **not** implemented (documented honestly rather than faked):
 
-- The rest of the collector function library. Shipped today: the editors `set`, `delete_key`, `keep_keys`, `replace_match`, `replace_all_matches`, `replace_pattern`, and `replace_all_patterns`, and the converters `Concat`, `ConvertCase`, `Double`, `Int`, `IsBool`, `IsDouble`, `IsList`, `IsMap`, `IsMatch`, `IsString`, `Len`, `Split`, `String`, `Substring`, `Trim`, `TrimPrefix`, and `TrimSuffix`. The optional converter argument of the `replace_*` editors is not supported.
+- The rest of the collector function library. Shipped today: the editors `set`, `delete_key`, `keep_keys`, `append`, `clear`, `delete_index`, `delete_matching_keys`, `keep_matching_keys`, `flatten`, `limit`, `merge_maps`, `stringify_all`, `truncate_all`, `replace_match`, `replace_all_matches`, `replace_pattern`, and `replace_all_patterns`, and the converters `Concat`, `ConvertCase`, `Double`, `Int`, `IsBool`, `IsDouble`, `IsList`, `IsMap`, `IsMatch`, `IsString`, `Len`, `Split`, `String`, `Substring`, `Trim`, `TrimPrefix`, and `TrimSuffix`. The optional converter argument of the `replace_*` editors is not supported.
 - OTTL pdata contexts (span/metric/log/resource/scope) — `ottl-context-otel` is a skeleton.
 - A built-in function that accepts a lambda. The lambda syntax itself is implemented; nothing in the standard editors calls one.
 - Statement-level collector configuration (conditions list, error mode, telemetry settings). Those are Collector config, not rule syntax.

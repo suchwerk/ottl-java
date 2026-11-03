@@ -3,6 +3,16 @@
 io.ottl.functions.standard.SetFunction
 io.ottl.functions.standard.DeleteKeyFunction
 io.ottl.functions.standard.KeepKeysFunction
+io.ottl.functions.standard.AppendFunction
+io.ottl.functions.standard.ClearFunction
+io.ottl.functions.standard.DeleteIndexFunction
+io.ottl.functions.standard.DeleteMatchingKeysFunction
+io.ottl.functions.standard.KeepMatchingKeysFunction
+io.ottl.functions.standard.FlattenFunction
+io.ottl.functions.standard.LimitFunction
+io.ottl.functions.standard.MergeMapsFunction
+io.ottl.functions.standard.StringifyAllFunction
+io.ottl.functions.standard.TruncateAllFunction
 io.ottl.functions.standard.ReplaceAllMatchesFunction
 io.ottl.functions.standard.ReplaceAllPatternsFunction
 io.ottl.functions.standard.ReplaceMatchFunction

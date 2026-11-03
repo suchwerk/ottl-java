@@ -18,17 +18,32 @@ public final class Argument {
     private final Expression expression;
     private final ExecutionContext ctx;
 
+    private static final Argument ABSENT = new Argument(null, null);
+
     public Argument(Expression expression, ExecutionContext ctx) {
         this.expression = expression;
         this.ctx = ctx;
+    }
+
+    /** An optional parameter that the caller omitted while naming a later one. */
+    public static Argument absent() {
+        return ABSENT;
     }
 
     public Expression expression() {
         return expression;
     }
 
+    /** False when this slot was an omitted optional parameter. */
+    public boolean isPresent() {
+        return expression != null;
+    }
+
     /** Evaluate the argument to a value. */
     public Object value() {
+        if (expression == null) {
+            throw new OttlEvaluationException("optional argument was not provided");
+        }
         return ctx.evaluate(expression);
     }
 
@@ -42,6 +57,9 @@ public final class Argument {
      * @throws OttlEvaluationException if the argument is not a path
      */
     public List<Expression.PathSegment> asLValuePath() {
+        if (expression == null) {
+            throw new OttlEvaluationException("optional argument was not provided");
+        }
         if (!(expression instanceof Expression.Path p)) {
             throw new OttlEvaluationException(
                     "Expected a path (assignable target) but got " + expression.getClass().getSimpleName());

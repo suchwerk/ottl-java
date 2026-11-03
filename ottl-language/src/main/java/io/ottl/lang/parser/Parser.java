@@ -726,9 +726,21 @@ public final class Parser {
         return true;
     }
 
-    /** Named-argument names use the OTTL lowercase form, e.g. {@code target}. */
+/**
+     * Named-argument names start with a lowercase letter and may contain capitals, matching
+     * collector fields such as {@code resolveConflicts}. {@code _} is not a name.
+     */
     private static boolean isArgumentName(String name) {
-        return isLambdaParam(name) && !name.equals("_");
+        if (name.isEmpty() || name.equals("_") || !isLower(name.charAt(0))) {
+            return false;
+        }
+        for (int i = 1; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (!(isLower(c) || isUpper(c) || isDigit(c) || c == '_')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean startsWithLower(String name) {

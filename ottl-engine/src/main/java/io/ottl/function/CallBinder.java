@@ -8,6 +8,7 @@ import io.ottl.OttlCompilationException;
 import io.ottl.lang.ast.Expression;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,8 +17,10 @@ import java.util.Optional;
  *
  * <p>When every argument is positional, the argument list is returned unchanged, including
  * variadic editors such as {@code keep_keys}. Named arguments are reordered to the function's
- * {@link OttlFunction#parameterNames()} and may follow positional ones. A function with no
- * declared parameter names rejects named arguments.
+ * {@link OttlFunction#parameterNames()} and may follow positional ones. An optional parameter
+ * (one past {@link OttlFunction#minArgs()}) may be omitted when a later parameter is named; that
+ * slot is {@code null}. A missing required parameter is rejected. A function with no declared
+ * parameter names rejects named arguments.
  */
 public final class CallBinder {
 
@@ -69,24 +72,26 @@ public final class CallBinder {
                 filled[index] = true;
             }
         }
+        int last = -1;
         for (int i = 0; i < params.size(); i++) {
-            if (!filled[i]) {
-                if (i < fn.minArgs()) {
-                    throw new OttlCompilationException(
-                            "Missing argument '" + params.get(i) + "' for function '" + fn.name() + "'");
-                }
-                for (int j = i + 1; j < params.size(); j++) {
-                    if (filled[j]) {
-                        throw new OttlCompilationException(
-                                "Missing argument '" + params.get(i) + "' for function '" + fn.name() + "'");
-                    }
-                }
-                break;
+            if (filled[i]) {
+                last = i;
             }
         }
         List<Expression> bound = new ArrayList<>();
-        for (int i = 0; i < params.size() && filled[i]; i++) {
-            bound.add(slots[i]);
+        for (int i = 0; i <= last; i++) {
+            if (filled[i]) {
+                bound.add(slots[i]);
+                continue;
+            }
+            if (i < fn.minArgs()) {
+                throw new OttlCompilationException(
+                        "Missing argument '" + params.get(i) + "' for function '" + fn.name() + "'");
+            }
+            bound.add(null);
+        }
+        if (bound.contains(null)) {
+            return Collections.unmodifiableList(bound);
         }
         return List.copyOf(bound);
     }
@@ -96,7 +101,7 @@ public final class CallBinder {
         List<Expression> bound = expressions(fn, call);
         List<Argument> args = new ArrayList<>(bound.size());
         for (Expression expression : bound) {
-            args.add(new Argument(expression, ctx));
+            args.add(expression == null ? Argument.absent() : new Argument(expression, ctx));
         }
         return args;
     }
