@@ -39,6 +39,7 @@ import org.eclipse.lsp4j.SignatureInformation;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -142,6 +143,11 @@ public final class Analyzer {
 
     private void semanticDiagnostics(List<Token> tokens, TypeInfo context,
                                      Set<Long> editorPositions, List<Diagnostic> out) {
+        List<LambdaSpan> lambdas = findLambdas(tokens);
+        Set<Integer> lambdaDecls = new HashSet<>();
+        for (LambdaSpan span : lambdas) {
+            lambdaDecls.addAll(span.declarations());
+        }
         Deque<Frame> frames = new ArrayDeque<>();
         int i = 0;
         while (i < tokens.size()) {
@@ -177,8 +183,19 @@ public final class Analyzer {
                         boolean editor = editorPositions.contains(posKey(t.line(), t.column()));
                         frames.push(new Frame(t.text(), editor));
                         i += 2; // consume IDENT and LPAREN
+                    } else if (next(tokens, i).type() == TokenType.ASSIGN) {
+                        boolean namedTarget = "target".equals(t.text());
+                        i += 2;
+                        if (namedTarget && i < tokens.size() && tokens.get(i).type() == TokenType.IDENT
+                                && next(tokens, i).type() != TokenType.LPAREN) {
+                            i = validatePath(tokens, i, context, true, out);
+                        }
                     } else if (KEYWORDS.contains(t.text()) || isControlKeyword(t.text())) {
                         i++;
+                    } else if (lambdaDecls.contains(i)) {
+                        i++;
+                    } else if (isLambdaLocal(lambdas, i, t.text())) {
+                        i = skipPath(tokens, i);
                     } else {
                         boolean write = isWriteTarget(frames);
                         i = validatePath(tokens, i, context, write, out);
@@ -535,6 +552,153 @@ public final class Analyzer {
     // =====================================================================================
     // Helpers
     // =====================================================================================
+
+    private record LambdaSpan(Set<Integer> declarations, Set<String> names, int bodyStart, int bodyEnd) {
+    }
+
+    /** Lambdas are {@code (params) => body}. Parameter names are locals inside the body. */
+    private static List<LambdaSpan> findLambdas(List<Token> tokens) {
+        List<LambdaSpan> spans = new ArrayList<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            if (tokens.get(i).type() != TokenType.LPAREN) {
+                continue;
+            }
+            int j = i + 1;
+            List<Integer> decls = new ArrayList<>();
+            Set<String> names = new HashSet<>();
+            if (j < tokens.size() && tokens.get(j).type() == TokenType.RPAREN) {
+                if (j + 1 < tokens.size() && tokens.get(j + 1).type() == TokenType.ARROW) {
+                    int bodyStart = j + 2;
+                    spans.add(new LambdaSpan(Set.of(), Set.of(), bodyStart, lambdaBodyEnd(tokens, bodyStart)));
+                }
+                continue;
+            }
+            while (j < tokens.size() && tokens.get(j).type() == TokenType.IDENT && isLambdaParam(tokens.get(j).text())) {
+                decls.add(j);
+                if (!tokens.get(j).text().equals("_")) {
+                    names.add(tokens.get(j).text());
+                }
+                j++;
+                if (j < tokens.size() && tokens.get(j).type() == TokenType.COMMA) {
+                    j++;
+                    continue;
+                }
+                break;
+            }
+            if (decls.isEmpty() || j >= tokens.size() || tokens.get(j).type() != TokenType.RPAREN) {
+                continue;
+            }
+            if (j + 1 >= tokens.size() || tokens.get(j + 1).type() != TokenType.ARROW) {
+                continue;
+            }
+            int bodyStart = j + 2;
+            spans.add(new LambdaSpan(Set.copyOf(decls), Set.copyOf(names), bodyStart, lambdaBodyEnd(tokens, bodyStart)));
+        }
+        return spans;
+    }
+
+    private static int lambdaBodyEnd(List<Token> tokens, int start) {
+        int paren = 0;
+        int bracket = 0;
+        int brace = 0;
+        for (int j = start; j < tokens.size(); j++) {
+            switch (tokens.get(j).type()) {
+                case LPAREN -> paren++;
+                case RPAREN -> {
+                    if (paren == 0 && bracket == 0 && brace == 0) {
+                        return j;
+                    }
+                    paren--;
+                }
+                case LBRACKET -> bracket++;
+                case RBRACKET -> {
+                    if (bracket > 0) {
+                        bracket--;
+                    }
+                }
+                case LBRACE -> brace++;
+                case RBRACE -> {
+                    if (brace == 0 && paren == 0 && bracket == 0) {
+                        return j;
+                    }
+                    brace--;
+                }
+                case COMMA -> {
+                    if (paren == 0 && bracket == 0 && brace == 0) {
+                        return j;
+                    }
+                }
+                case EOF -> {
+                    return j;
+                }
+                default -> {
+                }
+            }
+        }
+        return tokens.size();
+    }
+
+    private static boolean isLambdaLocal(List<LambdaSpan> spans, int tokenIndex, String name) {
+        List<LambdaSpan> containing = new ArrayList<>();
+        for (LambdaSpan span : spans) {
+            if (tokenIndex >= span.bodyStart() && tokenIndex < span.bodyEnd()) {
+                containing.add(span);
+            }
+        }
+        containing.sort((a, b) -> Integer.compare(b.bodyStart(), a.bodyStart()));
+        for (LambdaSpan span : containing) {
+            if (span.names().contains(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isLambdaParam(String name) {
+        if (name.equals("_")) {
+            return true;
+        }
+        if (name.isEmpty() || name.charAt(0) < 'a' || name.charAt(0) > 'z') {
+            return false;
+        }
+        for (int i = 1; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Consume a path, including indexes, without property diagnostics. */
+    private static int skipPath(List<Token> tokens, int i) {
+        i++;
+        while (i < tokens.size()) {
+            Token t = tokens.get(i);
+            if (t.type() == TokenType.DOT && next(tokens, i).type() == TokenType.IDENT) {
+                i += 2;
+            } else if (t.type() == TokenType.LBRACKET) {
+                int depth = 1;
+                i++;
+                while (i < tokens.size() && depth > 0) {
+                    if (tokens.get(i).type() == TokenType.LBRACKET) {
+                        depth++;
+                    } else if (tokens.get(i).type() == TokenType.RBRACKET) {
+                        depth--;
+                    }
+                    if (depth > 0) {
+                        i++;
+                    }
+                }
+                if (i < tokens.size() && tokens.get(i).type() == TokenType.RBRACKET) {
+                    i++;
+                }
+            } else {
+                break;
+            }
+        }
+        return i;
+    }
 
     private static void markArg(Deque<Frame> frames) {
         if (!frames.isEmpty()) {

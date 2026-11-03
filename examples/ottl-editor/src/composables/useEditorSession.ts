@@ -140,6 +140,7 @@ export function useEditorSession() {
         contextNames,
         selectedKey,
         initialText,
+        editorText,
         source,
         editor,
         lspStatus,

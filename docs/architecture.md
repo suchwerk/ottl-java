@@ -9,14 +9,14 @@ extended for arbitrary Java objects and with support for runtime-updatable rules
 ## 1. Goals and non-goals
 
 **Goals**
-- A small, correct, well-tested OTTL subset that runs on plain Java (no framework required).
+- The OTTL grammar (statements, values, math, maps, bytes, indexes, named arguments, lambdas) on plain Java, with no framework required.
 - First-class support for Java data shapes: `Map`, nested maps, POJOs/JavaBeans, records, Jackson `JsonNode`.
 - Compile transformation rules once into immutable, thread-safe programs; **replace rules at runtime** without restart.
 - A genuine Quarkus extension (runtime + deployment) with CDI wiring and native-image awareness.
 - Security posture that assumes rule authors are **less trusted** than application developers.
 
-**Non-goals (MVP)**
-- Full OTTL v1 language coverage (see [Unsupported features](#8-unsupported-ottl-features)).
+**Non-goals**
+- Claiming OTTL v1 compliance. The grammar is implemented; the standard converter library and pdata contexts are not (see [Unsupported features](#8-unsupported-ottl-features)).
 - OpenTelemetry pdata contexts (spans/metrics/logs) — module skeleton only (⛔ `ottl-context-otel`).
 - A verified native binary — the architecture is native-ready but no GraalVM/Mandrel was available to
   prove it, so native support is **not claimed** (see [§7](#7-native-image-strategy)).
@@ -66,7 +66,7 @@ extension: the condition is evaluated once, then every item in the braces runs. 
 `where` on a single editor statement is unchanged. Blocks and `if` / `else` are a further
 extension, accepted only when the engine's [dialect](#10-ottl-extended-language) is `EXTENDED`.
 
-### Grammar (implemented subset)
+### Grammar
 
 ```
 script      := item*
@@ -76,18 +76,42 @@ ifStatement := "if" condition block
                ("else" "if" condition block)*
                ("else" block)?                            # OttlDialect.EXTENDED
 whereBlock  := "where" condition "{" item* "}"
-statement   := functionCall ("where" condition)?
+statement   := editor ("where" condition)?
+editor      := lowercaseName "(" arguments ")"            # no trailing indexes
 condition   := orExpr
 orExpr      := andExpr ("or" andExpr)*
 andExpr     := unaryCond ("and" unaryCond)*
-unaryCond   := "not" unaryCond | "(" condition ")" | comparison
-comparison  := value (("=="|"!="|"<"|"<="|">"|">=") value)?
-value       := STRING | INT | FLOAT | "true" | "false" | "nil"
-             | "-" (INT|FLOAT) | list | functionCall | path
-list        := "[" (value ("," value)*)? "]"
-path        := IDENT ("." IDENT | "[" (STRING|INT) "]")*
-functionCall:= IDENT "(" (value ("," value)*)? ")"
+unaryCond   := "not" unaryCond | comparison | "(" condition ")"
+comparison  := expression (compOp expression)?
+expression  := term (("+" | "-") term)*
+term        := unary (("*" | "/") unary)*
+unary       := ("+" | "-") primary
+primary     := literal | list | map | bytes | lambda | converter | path | "(" expression ")"
+converter   := UppercaseName "(" arguments ")" ("[" expression "]")*
+arguments   := (argument ("," argument)*)?
+argument    := (lowercaseName "=")? expression            # named arguments follow positional ones
+path        := IDENT ("." IDENT | "[" expression "]")*
+map         := "{" (mapKey ":" expression ("," mapKey ":" expression)*)? ","? "}"
+mapKey      := STRING | path | converter
+lambda      := "(" parameters ")" "=>" (expression | condition)
+bytes       := "0x" hex hex (hex hex)*
 ```
+
+`*` and `/` bind tighter than `+` and `-`, and both levels are left-associative. `and` binds tighter than `or`. A parenthesized math expression can be the left side of a comparison, as in `(1 + 2) > 3`. A parenthesized boolean, as in `(a > 1 and b < 2)`, is still a grouped condition.
+
+Editor names start with a lowercase letter. Converter names start with an uppercase letter. `set(...)` in value position and `Concat(...)` as a statement are parse errors. Java functions follow the same rule: `@OttlFunction` converters use an uppercase name.
+
+Integer and floating-point operands are not mixed. Integer division truncates toward zero. Division by zero is an evaluation error. `BigDecimal` arithmetic is a Java addition: a decimal combines with integers and other decimals, and not with floats. `Instant` and `Duration` support `+` and `-` only.
+
+Named arguments bind to the names declared by the function (`OttlFunction.parameterNames()`). `set` accepts `target` and `value`. `delete_key` accepts `target` and `key`. `keep_keys` accepts `target` and `keys`. A function that does not declare parameter names rejects named arguments. Positional calls are unchanged, including `keep_keys(target, "a", "b")`.
+
+A lambda is a value. Its parameters are lowercase identifiers, and `_` may be repeated to ignore a parameter. The body is a value (`(n) => n + 1`) or a condition (`(a, b) => a == b`). Parameters are read-only. No standard function takes a lambda; a registered function can accept the value and call it. A lambda body cannot itself be a lambda. Nested calls such as `(outer) => Apply((inner) => outer + inner, 1)` are allowed.
+
+Map keys may be string literals, paths, or converters. A computed key is evaluated to a string when the map is built. The collector hides dynamic keys behind a feature gate; this engine accepts them.
+
+Byte slices use a `0x` prefix and an even number of hex digits. Floats may omit the leading or trailing digit (`.5`, `5.`) and may use an exponent (`1.5e-1`, `1e2`). Line comments are `//`. `#` remains available for authoring.
+
+Bare all-caps tokens such as `SPAN_KIND_SERVER` are enum symbols. They resolve through the enum registry when exactly one registered constant has that name. Dotted Java constants (`OrderStatus.PENDING`) stay paths.
 
 ## 4. Engine design
 
@@ -183,16 +207,12 @@ types with `@RegisterForReflection` (already done for `Order`).
 
 ## 8. Unsupported OTTL features
 
-Explicitly **not** implemented in the MVP (documented honestly rather than faked):
+Explicitly **not** implemented (documented honestly rather than faked):
 
-- Math expressions (`+ - * /`), indexing math, and `Len`/`Concat`/most standard converters.
+- The standard OTTL converter library (`Len`, `Concat`, `IsMatch`, `Split`, and the rest of `ottlfuncs`). Calls to those names parse when the name is allowlisted, and they fail compilation until a function is registered.
 - OTTL pdata contexts (span/metric/log/resource/scope) — `ottl-context-otel` is a skeleton.
-- Time/duration literals, byte-slice literals, `nil`-coalescing specifics. Enum constants are supported
-  as expression values (`OrderStatus.PENDING`) when the enum is `@OttlAccessible`; the enum is not a
-  context type.
-- `where` combined with OTTL's full converter library; only the allowlisted functions are available.
-- Statement-level `ottl`-config features (conditions list, error modes, telemetry settings).
-- Full operator-precedence parity audits against the Go PEG grammar (we cover the common subset).
+- A built-in function that accepts a lambda. The lambda syntax itself is implemented; nothing in the standard editors calls one.
+- Statement-level collector configuration (conditions list, error mode, telemetry settings). Those are Collector config, not rule syntax.
 - Loops (`while`, `for`, `foreach`), recursive functions, arbitrary Java method calls, `let` bindings,
   `switch` / `case`, and named rule blocks. Blocks are shaped so a future `let` can be lexical and
   immutable; they are not implemented. New constructs belong to `OttlDialect.EXTENDED` unless they

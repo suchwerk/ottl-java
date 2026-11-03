@@ -6,6 +6,7 @@ package io.ottl.internal;
 
 import io.ottl.OttlCompilationException;
 import io.ottl.OttlLimits;
+import io.ottl.function.CallBinder;
 import io.ottl.function.FunctionRegistry;
 import io.ottl.function.OttlFunction;
 import io.ottl.lang.ast.Block;
@@ -140,9 +141,39 @@ public final class Validator {
                     validateExpression(e, callDepth);
                 }
             }
-            default -> {
-                // literals need no validation
+            case Expression.MapLiteral map -> {
+                for (Expression.MapEntry entry : map.entries()) {
+                    validateExpression(entry.key(), callDepth);
+                    validateExpression(entry.value(), callDepth);
+                }
             }
+            case Expression.Math math -> {
+                validateExpression(math.left(), callDepth);
+                validateExpression(math.right(), callDepth);
+            }
+            case Expression.Unary unary -> validateExpression(unary.operand(), callDepth);
+            case Expression.Lambda lambda -> validateLambda(lambda, callDepth);
+            case Expression.StringLiteral ignored -> {
+            }
+            case Expression.IntLiteral ignored -> {
+            }
+            case Expression.FloatLiteral ignored -> {
+            }
+            case Expression.BoolLiteral ignored -> {
+            }
+            case Expression.NilLiteral ignored -> {
+            }
+            case Expression.BytesLiteral ignored -> {
+            }
+            case Expression.EnumSymbol ignored -> {
+            }
+        }
+    }
+
+    private void validateLambda(Expression.Lambda lambda, int callDepth) {
+        switch (lambda.body()) {
+            case Expression.LambdaValue value -> validateExpression(value.expression(), callDepth);
+            case Expression.LambdaCondition condition -> validateCondition(condition.condition());
         }
     }
 
@@ -152,13 +183,16 @@ public final class Validator {
                     + limits.maxCallDepth() + ") at '" + call.name() + "'");
         }
         OttlFunction fn = functions.require(call.name());
-        int argc = call.arguments().size();
+        int argc = CallBinder.expressions(fn, call).size();
         if (argc < fn.minArgs() || argc > fn.maxArgs()) {
             throw new OttlCompilationException("Function '" + call.name() + "' expects between "
                     + fn.minArgs() + " and " + fn.maxArgs() + " arguments but got " + argc);
         }
         for (Expression arg : call.arguments()) {
             validateExpression(arg, callDepth + 1);
+        }
+        for (Expression key : call.keys()) {
+            validateExpression(key, callDepth + 1);
         }
     }
 

@@ -7,10 +7,13 @@ package io.ottl.lang.parser;
 import io.ottl.lang.ast.ComparisonOperator;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
+import io.ottl.lang.ast.MathOp;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.ast.Statement;
 import io.ottl.lang.ast.WhereBlock;
 import org.junit.jupiter.api.Test;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -157,5 +160,73 @@ class ParserTest {
         assertThatThrownBy(() -> Parser.parse("set(x, 1"))
                 .isInstanceOf(OttlParseException.class)
                 .hasMessageContaining("')'");
+    }
+
+    @Test
+    void parsesMathWithPrecedenceParenthesesAndUnaryPlus() {
+        Statement stmt = Parser.parseStatement("set(n, (1 + 2) * 3 + -4)");
+        Expression value = stmt.editor().arguments().get(1);
+        assertThat(value).isEqualTo(new Expression.Math(
+                new Expression.Math(
+                        new Expression.Math(new Expression.IntLiteral(1), MathOp.ADD, new Expression.IntLiteral(2)),
+                        MathOp.MUL,
+                        new Expression.IntLiteral(3)),
+                MathOp.ADD,
+                new Expression.IntLiteral(-4)));
+    }
+
+    @Test
+    void parsesComparisonWhoseLeftSideIsParenthesizedMath() {
+        Statement stmt = Parser.parseStatement("set(x, 1) where (1 + 2) > 3");
+        Condition.Comparison cmp = (Condition.Comparison) stmt.condition().orElseThrow();
+        assertThat(cmp.operator()).isEqualTo(ComparisonOperator.GT);
+        assertThat(cmp.left()).isInstanceOf(Expression.Math.class);
+        assertThat(cmp.right()).isEqualTo(new Expression.IntLiteral(3));
+    }
+
+    @Test
+    void parsesMapBytesFloatsAndNamedArguments() {
+        Statement stmt = Parser.parseStatement("""
+                set(target=attributes["out"], value={"k": .5, "b": 0x0001}) // comment
+                """);
+        assertThat(stmt.editor().argumentNames()).containsExactly(
+                Optional.of("target"), Optional.of("value"));
+        Expression.MapLiteral map = (Expression.MapLiteral) stmt.editor().arguments().get(1);
+        assertThat(map.entries()).hasSize(2);
+        assertThat(map.entries().get(0).value()).isEqualTo(new Expression.FloatLiteral(0.5));
+        assertThat(map.entries().get(1).value()).isEqualTo(new Expression.BytesLiteral(new byte[] {0x00, 0x01}));
+    }
+
+    @Test
+    void parsesConverterIndexDynamicKeyAndLambda() {
+        Statement stmt = Parser.parseStatement(
+                "set(x, Split(field, \",\")[1][name + 1]) where y == (value) => value == 1");
+        Expression.FunctionCall split = (Expression.FunctionCall) stmt.editor().arguments().get(1);
+        assertThat(split.name()).isEqualTo("Split");
+        assertThat(split.keys()).hasSize(2);
+        assertThat(split.keys().get(0)).isEqualTo(new Expression.IntLiteral(1));
+        assertThat(split.keys().get(1)).isInstanceOf(Expression.Math.class);
+
+        Condition.Comparison cmp = (Condition.Comparison) stmt.condition().orElseThrow();
+        assertThat(cmp.right()).isInstanceOf(Expression.Lambda.class);
+        Expression.Lambda lambda = (Expression.Lambda) cmp.right();
+        assertThat(lambda.parameters()).containsExactly("value");
+        assertThat(lambda.body()).isInstanceOf(Expression.LambdaCondition.class);
+    }
+
+    @Test
+    void rejectsUppercaseEditorLowercaseConverterAndOddBytes() {
+        assertThatThrownBy(() -> Parser.parse("Concat(a, b)"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("lowercase");
+        assertThatThrownBy(() -> Parser.parse("set(x, len(y))"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("uppercase");
+        assertThatThrownBy(() -> Parser.parse("set(x, 0x123)"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("even number");
+        assertThatThrownBy(() -> Parser.parse("set(x, 1)[0]"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("not editors");
     }
 }

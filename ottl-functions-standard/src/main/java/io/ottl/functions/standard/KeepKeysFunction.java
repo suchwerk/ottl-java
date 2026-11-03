@@ -24,6 +24,11 @@ public final class KeepKeysFunction implements OttlFunction {
     }
 
     @Override
+    public List<String> parameterNames() {
+        return List.of("target", "keys");
+    }
+
+    @Override
     public int minArgs() {
         return 2;
     }

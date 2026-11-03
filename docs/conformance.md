@@ -21,7 +21,12 @@ References:
 | sequential statements | run top-to-bottom | `...multipleStatementsRunSequentially` |
 | comparisons `== != < <= > >=` | numeric/string/bool compare | `RecordCopyTest`, `PojoMutationTest` |
 | boolean `and`/`or`/`not`, parens | precedence & grouping | `ParserTest.parsesBooleanExpressionWithPrecedenceAndParens` |
-| literals: string/int/float/bool/nil | literal parsing | `ParserTest.parsesFloatsNegativesAndNil` |
+| literals: string/int/float/bool/nil/bytes | literal parsing | `ParserTest`, `OttlSyntaxConformanceTest` |
+| lists and maps | literal collections | `OttlSyntaxConformanceTest` |
+| math `+ - * /` | int/float not mixed; integer division truncates | `OttlSyntaxConformanceTest.mathFollowsOttlNumericRules` |
+| named arguments | `set(value=..., target=...)` | `OttlSyntaxConformanceTest.mapsBytesIndexesAndNamedArguments` |
+| converter and path indexes | `Words("a,b")[1]`, `attributes[name]` | `OttlSyntaxConformanceTest` |
+| lambdas | value, read-only parameters; no standard caller | `OttlSyntaxConformanceTest.lambdaAppliesWithOuterCapture` |
 | keyed/indexed paths `a["k"][0]` | nested access | `ParserTest.parsesKeyedPathAndIntKeys` |
 
 ## ottl-java extensions
@@ -36,9 +41,9 @@ These are not part of reference OTTL. They are available in both profiles.
 
 ## Known differences / gaps
 
-See [architecture.md §8](architecture.md#8-unsupported-ottl-features). Notably: math expressions, the
-full converter library, and OTTL pdata contexts are not yet implemented. These should be added behind
-the STANDARD profile and verified against reference fixtures before any "v1 compliance" is claimed.
+See [architecture.md §8](architecture.md#8-unsupported-ottl-features). Notably: the standard converter
+library and OTTL pdata contexts are not yet implemented. These should be added behind the STANDARD
+profile and verified against reference fixtures before any "v1 compliance" is claimed.
 
 ## Adding new conformance cases
 

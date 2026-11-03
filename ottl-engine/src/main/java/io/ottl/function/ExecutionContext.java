@@ -11,9 +11,11 @@ import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyResolver;
 import io.ottl.spi.ResolverRegistry;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -30,6 +32,7 @@ public final class ExecutionContext {
     private final FunctionRegistry functions;
     private final ExecutionMode mode;
     private final EnumConstantRegistry enums;
+    private final ArrayDeque<Map<String, Object>> locals = new ArrayDeque<>();
 
     public ExecutionContext(Object root, String contextName, ResolverRegistry resolvers,
                             FunctionRegistry functions, ExecutionMode mode) {
@@ -66,6 +69,15 @@ public final class ExecutionContext {
         return functions;
     }
 
+    /** Push read-only lambda bindings. The innermost scope is consulted first. */
+    public void pushLocals(Map<String, Object> bindings) {
+        locals.addFirst(bindings);
+    }
+
+    public void popLocals() {
+        locals.removeFirst();
+    }
+
     /** Evaluate an expression to a value. */
     public Object evaluate(Expression expression) {
         return Evaluator.eval(this, expression);
@@ -93,6 +105,18 @@ public final class ExecutionContext {
         return Optional.of(match.value());
     }
 
+    /** Resolve a bare enum symbol, or fail when it is unknown or ambiguous. */
+    public Object enumSymbol(String name) {
+        EnumConstantRegistry.SymbolLookup lookup = enums.symbol(name);
+        if (lookup == null) {
+            throw new OttlEvaluationException("Unknown enum symbol '" + name + "'");
+        }
+        if (lookup.ambiguous()) {
+            throw new OttlEvaluationException("Ambiguous enum symbol '" + name + "'");
+        }
+        return lookup.value();
+    }
+
     /**
      * Strip a leading context-name segment, so both {@code order.status} and {@code status} navigate
      * to the same property when the context name is {@code order}.
@@ -100,39 +124,123 @@ public final class ExecutionContext {
     public List<Expression.PathSegment> strip(Expression.Path path) {
         List<Expression.PathSegment> segs = path.segments();
         if (!segs.isEmpty() && segs.get(0) instanceof Expression.FieldSegment f
-                && f.name().equals(contextName)) {
+                && f.name().equals(contextName) && !isLocal(f.name())) {
             return segs.subList(1, segs.size());
         }
         return segs;
     }
 
+    public boolean isLocalPath(Expression.Path path) {
+        return !path.segments().isEmpty()
+                && path.segments().get(0) instanceof Expression.FieldSegment field
+                && isLocal(field.name());
+    }
+
+    public boolean isLocal(String name) {
+        for (Map<String, Object> scope : locals) {
+            if (scope.containsKey(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ----- path reads -----
 
     public Object getPath(List<Expression.PathSegment> segments) {
-        Object cur = root;
-        for (Expression.PathSegment seg : segments) {
+        if (!segments.isEmpty() && segments.get(0) instanceof Expression.FieldSegment field && isLocal(field.name())) {
+            return navigate(lookupLocal(field.name()), segments, 1);
+        }
+        return navigate(root, segments, 0);
+    }
+
+    private Object navigate(Object cur, List<Expression.PathSegment> segments, int start) {
+        for (int i = start; i < segments.size(); i++) {
             if (cur == null) {
                 return null;
             }
-            cur = getSegment(cur, seg);
+            cur = getSegment(cur, segments.get(i));
         }
         return cur;
     }
 
-    private Object getSegment(Object target, Expression.PathSegment seg) {
-        PropertyResolver r = resolvers.forTarget(target);
-        if (seg instanceof Expression.FieldSegment f) {
-            return r.getField(target, f.name());
+    private Object lookupLocal(String name) {
+        for (Map<String, Object> scope : locals) {
+            if (scope.containsKey(name)) {
+                return scope.get(name);
+            }
         }
-        return r.getKey(target, ((Expression.KeySegment) seg).key());
+        throw new OttlEvaluationException("Unknown lambda parameter '" + name + "'");
+    }
+
+    private Object getSegment(Object target, Expression.PathSegment seg) {
+        if (seg instanceof Expression.FieldSegment f) {
+            return resolvers.forTarget(target).getField(target, f.name());
+        }
+        return index(target, segmentKey(seg));
     }
 
     private Object setSegment(Object target, Expression.PathSegment seg, Object value) {
-        PropertyResolver r = resolvers.forTarget(target);
         if (seg instanceof Expression.FieldSegment f) {
-            return r.setField(target, f.name(), value);
+            return resolvers.forTarget(target).setField(target, f.name(), value);
         }
-        return r.setKey(target, ((Expression.KeySegment) seg).key(), value);
+        return setIndex(target, segmentKey(seg), value);
+    }
+
+    /** Index a map, list, byte slice, or any other resolved target. A null target yields null. */
+    public Object index(Object target, Object key) {
+        if (target == null) {
+            return null;
+        }
+        if (target instanceof List<?> list) {
+            return list.get(asIndex(key, list.size()));
+        }
+        if (target instanceof byte[] bytes) {
+            return Byte.toUnsignedInt(bytes[asIndex(key, bytes.length)]);
+        }
+        return resolvers.forTarget(target).getKey(target, key);
+    }
+
+    private Object setIndex(Object target, Object key, Object value) {
+        if (target instanceof List<?> list) {
+            @SuppressWarnings("unchecked")
+            List<Object> raw = (List<Object>) list;
+            raw.set(asIndex(key, raw.size()), value);
+            return target;
+        }
+        if (target instanceof byte[]) {
+            throw new OttlEvaluationException("Byte slices are not writable by index");
+        }
+        return resolvers.forTarget(target).setKey(target, key, value);
+    }
+
+    private Object segmentKey(Expression.PathSegment seg) {
+        if (seg instanceof Expression.KeySegment key) {
+            return key.key();
+        }
+        if (seg instanceof Expression.DynamicKeySegment dynamic) {
+            return evaluate(dynamic.key());
+        }
+        throw new OttlEvaluationException("Expected an index but found a field");
+    }
+
+    private static int asIndex(Object key, int size) {
+        long value;
+        if (key instanceof Byte || key instanceof Short || key instanceof Integer || key instanceof Long) {
+            value = ((Number) key).longValue();
+        } else if (key instanceof java.math.BigInteger integer) {
+            value = integer.longValueExact();
+        } else {
+            throw new OttlEvaluationException("List index must be an integer but was " + describeValue(key));
+        }
+        if (value < 0 || value >= size) {
+            throw new OttlEvaluationException("List index " + value + " is out of range (size " + size + ")");
+        }
+        return (int) value;
+    }
+
+    private static String describeValue(Object value) {
+        return value == null ? "nil" : value.getClass().getSimpleName();
     }
 
     // ----- path writes (updates root, with copy-on-write bubbling) -----
@@ -146,6 +254,9 @@ public final class ExecutionContext {
         if (segments.isEmpty()) {
             this.root = value;
             return;
+        }
+        if (segments.get(0) instanceof Expression.FieldSegment field && isLocal(field.name())) {
+            throw new OttlEvaluationException("Lambda parameter '" + field.name() + "' is read-only");
         }
         this.root = setRec(root, segments, 0, value);
     }
@@ -230,6 +341,9 @@ public final class ExecutionContext {
     private static String describe(Expression.PathSegment seg) {
         if (seg instanceof Expression.FieldSegment f) {
             return f.name();
+        }
+        if (seg instanceof Expression.DynamicKeySegment) {
+            return "[...]";
         }
         return "[" + ((Expression.KeySegment) seg).key() + "]";
     }

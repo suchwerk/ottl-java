@@ -78,8 +78,6 @@ public final class OttlEngine {
         }
         allResolvers.sort(Comparator.comparingInt(PropertyResolver::priority));
         this.resolvers = new ResolverRegistry(allResolvers);
-        this.semanticValidator = accessorRegistry != null
-                ? new SemanticValidator(accessorRegistry, enumRegistry) : null;
 
         FunctionRegistry.Builder fnBuilder = FunctionRegistry.builder();
         if (b.loadDefaults) {
@@ -88,6 +86,8 @@ public final class OttlEngine {
         fnBuilder.addAll(b.functions);
         this.functions = fnBuilder.build();
         this.validator = new Validator(functions, limits);
+        this.semanticValidator = accessorRegistry != null
+                ? new SemanticValidator(accessorRegistry, enumRegistry, functions) : null;
     }
 
     public static Builder builder() {

@@ -5,6 +5,8 @@
 package io.ottl.internal;
 
 import io.ottl.OttlCompilationException;
+import io.ottl.function.CallBinder;
+import io.ottl.function.FunctionRegistry;
 import io.ottl.lang.ast.Block;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
@@ -17,8 +19,12 @@ import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.PropertyAccessorRegistry;
 import io.ottl.spi.TypeMetadata;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Validates, at compile time, that every path in a script refers to approved properties of
@@ -29,91 +35,143 @@ public final class SemanticValidator {
 
     private final PropertyAccessorRegistry registry;
     private final EnumConstantRegistry enums;
+    private final FunctionRegistry functions;
 
-    public SemanticValidator(PropertyAccessorRegistry registry, EnumConstantRegistry enums) {
+    public SemanticValidator(PropertyAccessorRegistry registry, EnumConstantRegistry enums,
+                             FunctionRegistry functions) {
         this.registry = registry;
         this.enums = enums == null ? EnumConstantRegistry.empty() : enums;
+        this.functions = functions;
     }
 
     public void validate(Class<?> rootType, String contextName, OttlScript script) {
-        validateItems(script.statements(), rootType, contextName);
+        validateItems(script.statements(), rootType, contextName, new ArrayDeque<>());
     }
 
-    private void validateItems(List<ScriptItem> items, Class<?> rootType, String contextName) {
+    private void validateItems(List<ScriptItem> items, Class<?> rootType, String contextName,
+                               Deque<Set<String>> scopes) {
         for (ScriptItem item : items) {
-            validateItem(item, rootType, contextName);
+            validateItem(item, rootType, contextName, scopes);
         }
     }
 
-    private void validateItem(ScriptItem item, Class<?> rootType, String contextName) {
+    private void validateItem(ScriptItem item, Class<?> rootType, String contextName,
+                              Deque<Set<String>> scopes) {
         switch (item) {
             case Statement stmt -> {
-                List<Expression> args = stmt.editor().arguments();
+                List<Expression> args = CallBinder.expressions(functions.require(stmt.editor().name()), stmt.editor());
                 for (int i = 0; i < args.size(); i++) {
                     // By convention the first argument of set/delete_key/keep_keys is the write target.
-                    validateExpression(args.get(i), rootType, contextName, i == 0);
+                    validateExpression(args.get(i), rootType, contextName, i == 0, scopes);
                 }
-                stmt.condition().ifPresent(c -> validateCondition(c, rootType, contextName));
+                stmt.condition().ifPresent(c -> validateCondition(c, rootType, contextName, scopes));
             }
             case WhereBlock block -> {
-                validateCondition(block.condition(), rootType, contextName);
-                validateItems(block.body(), rootType, contextName);
+                validateCondition(block.condition(), rootType, contextName, scopes);
+                validateItems(block.body(), rootType, contextName, scopes);
             }
-            case Block block -> validateItems(block.statements(), rootType, contextName);
+            case Block block -> validateItems(block.statements(), rootType, contextName, scopes);
             case IfStatement branch -> {
-                validateCondition(branch.condition(), rootType, contextName);
-                validateItems(branch.thenBlock().statements(), rootType, contextName);
+                validateCondition(branch.condition(), rootType, contextName, scopes);
+                validateItems(branch.thenBlock().statements(), rootType, contextName, scopes);
                 branch.elseBranch().ifPresent(other -> {
                     if (other instanceof Block elseBlock) {
-                        validateItems(elseBlock.statements(), rootType, contextName);
+                        validateItems(elseBlock.statements(), rootType, contextName, scopes);
                     } else {
-                        validateItem(other, rootType, contextName);
+                        validateItem(other, rootType, contextName, scopes);
                     }
                 });
             }
         }
     }
 
-    private void validateCondition(Condition condition, Class<?> rootType, String contextName) {
+    private void validateCondition(Condition condition, Class<?> rootType, String contextName,
+                                   Deque<Set<String>> scopes) {
         switch (condition) {
             case Condition.And and -> {
-                validateCondition(and.left(), rootType, contextName);
-                validateCondition(and.right(), rootType, contextName);
+                validateCondition(and.left(), rootType, contextName, scopes);
+                validateCondition(and.right(), rootType, contextName, scopes);
             }
             case Condition.Or or -> {
-                validateCondition(or.left(), rootType, contextName);
-                validateCondition(or.right(), rootType, contextName);
+                validateCondition(or.left(), rootType, contextName, scopes);
+                validateCondition(or.right(), rootType, contextName, scopes);
             }
-            case Condition.Not not -> validateCondition(not.condition(), rootType, contextName);
+            case Condition.Not not -> validateCondition(not.condition(), rootType, contextName, scopes);
             case Condition.Comparison cmp -> {
-                validateExpression(cmp.left(), rootType, contextName, false);
-                validateExpression(cmp.right(), rootType, contextName, false);
+                validateExpression(cmp.left(), rootType, contextName, false, scopes);
+                validateExpression(cmp.right(), rootType, contextName, false, scopes);
             }
-            case Condition.ValueCondition vc -> validateExpression(vc.expression(), rootType, contextName, false);
+            case Condition.ValueCondition vc ->
+                    validateExpression(vc.expression(), rootType, contextName, false, scopes);
         }
     }
 
-    private void validateExpression(Expression expr, Class<?> rootType, String contextName, boolean write) {
+    private void validateExpression(Expression expr, Class<?> rootType, String contextName, boolean write,
+                                    Deque<Set<String>> scopes) {
         switch (expr) {
-            case Expression.Path path -> validatePath(path, rootType, contextName, write);
+            case Expression.Path path -> validatePath(path, rootType, contextName, write, scopes);
             case Expression.FunctionCall call -> {
                 for (Expression arg : call.arguments()) {
-                    validateExpression(arg, rootType, contextName, false);
+                    validateExpression(arg, rootType, contextName, false, scopes);
+                }
+                for (Expression key : call.keys()) {
+                    validateExpression(key, rootType, contextName, false, scopes);
                 }
             }
             case Expression.ListLiteral list -> {
                 for (Expression e : list.elements()) {
-                    validateExpression(e, rootType, contextName, false);
+                    validateExpression(e, rootType, contextName, false, scopes);
                 }
             }
+            case Expression.MapLiteral map -> {
+                for (Expression.MapEntry entry : map.entries()) {
+                    validateExpression(entry.key(), rootType, contextName, false, scopes);
+                    validateExpression(entry.value(), rootType, contextName, false, scopes);
+                }
+            }
+            case Expression.Math math -> {
+                validateExpression(math.left(), rootType, contextName, false, scopes);
+                validateExpression(math.right(), rootType, contextName, false, scopes);
+            }
+            case Expression.Unary unary -> validateExpression(unary.operand(), rootType, contextName, false, scopes);
+            case Expression.Lambda lambda -> validateLambda(lambda, rootType, contextName, scopes);
             default -> {
-                // literals need no validation
+                // literals and enum symbols need no property check
             }
         }
     }
 
-    private void validatePath(Expression.Path path, Class<?> rootType, String contextName, boolean write) {
+    private void validateLambda(Expression.Lambda lambda, Class<?> rootType, String contextName,
+                                Deque<Set<String>> scopes) {
+        Set<String> scope = new LinkedHashSet<>();
+        for (String parameter : lambda.parameters()) {
+            if (!parameter.equals("_")) {
+                scope.add(parameter);
+            }
+        }
+        scopes.addFirst(scope);
+        try {
+            switch (lambda.body()) {
+                case Expression.LambdaValue value ->
+                        validateExpression(value.expression(), rootType, contextName, false, scopes);
+                case Expression.LambdaCondition condition ->
+                        validateCondition(condition.condition(), rootType, contextName, scopes);
+            }
+        } finally {
+            scopes.removeFirst();
+        }
+    }
+
+    private void validatePath(Expression.Path path, Class<?> rootType, String contextName, boolean write,
+                              Deque<Set<String>> scopes) {
         List<Expression.PathSegment> segs = path.segments();
+        if (!segs.isEmpty() && segs.get(0) instanceof Expression.FieldSegment first && isLocal(scopes, first.name())) {
+            if (write) {
+                throw new OttlCompilationException("Lambda parameter '" + first.name() + "' is read-only");
+            }
+            validateDynamicKeys(segs, rootType, contextName, scopes);
+            return;
+        }
         if (rejectEnum(segs, write)) {
             return;
         }
@@ -124,6 +182,10 @@ public final class SemanticValidator {
         Class<?> curType = rootType;
         for (int i = start; i < segs.size(); i++) {
             Expression.PathSegment seg = segs.get(i);
+            if (seg instanceof Expression.DynamicKeySegment dynamic) {
+                validateExpression(dynamic.key(), rootType, contextName, false, scopes);
+                return;
+            }
             if (seg instanceof Expression.KeySegment) {
                 return; // keyed/index access is dynamic; cannot be statically validated
             }
@@ -144,6 +206,9 @@ public final class SemanticValidator {
             if (isLast) {
                 return;
             }
+            if (segs.get(i + 1) instanceof Expression.DynamicKeySegment dynamic) {
+                validateExpression(dynamic.key(), rootType, contextName, false, scopes);
+            }
             String nextFqn = meta.propertyTypeName(name);
             Class<?> next = registry.typeByName(nextFqn);
             if (next == null) {
@@ -155,6 +220,24 @@ public final class SemanticValidator {
             }
             curType = next;
         }
+    }
+
+    private void validateDynamicKeys(List<Expression.PathSegment> segs, Class<?> rootType, String contextName,
+                                     Deque<Set<String>> scopes) {
+        for (Expression.PathSegment seg : segs) {
+            if (seg instanceof Expression.DynamicKeySegment dynamic) {
+                validateExpression(dynamic.key(), rootType, contextName, false, scopes);
+            }
+        }
+    }
+
+    private static boolean isLocal(Deque<Set<String>> scopes, String name) {
+        for (Set<String> scope : scopes) {
+            if (scope.contains(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** @return true when the path is an enum constant reference and has been checked */

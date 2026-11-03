@@ -21,6 +21,11 @@ public final class DeleteKeyFunction implements OttlFunction {
     }
 
     @Override
+    public List<String> parameterNames() {
+        return List.of("target", "key");
+    }
+
+    @Override
     public int minArgs() {
         return 2;
     }

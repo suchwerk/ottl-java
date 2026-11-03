@@ -15,8 +15,8 @@
                     <template #before>
                         <editor-pane
                             v-if="loaded"
-                            ref="editor"
-                            :initial-text="initialText"
+                            :ref="bindEditor"
+                            :initial-text="editorText"
                             @status="lspStatus = $event"
                             @change="onEditorChange"
                         />
@@ -39,11 +39,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, type ComponentPublicInstance } from 'vue';
 import EditorPane from '../components/EditorPane.vue';
 import RuleList from '../components/RuleList.vue';
 import TestPanel from '../components/TestPanel.vue';
-import { useEditorSession } from '../composables/useEditorSession';
+import { useEditorSession, type EditorPaneApi } from '../composables/useEditorSession';
 
 const leftSplit = ref(20);
 const rightSplit = ref(62);
@@ -54,7 +54,7 @@ const {
     context,
     contextNames,
     selectedKey,
-    initialText,
+    editorText,
     source,
     editor,
     lspStatus,
@@ -63,6 +63,10 @@ const {
     setContext,
     loadRules
 } = useEditorSession();
+
+function bindEditor(instance: Element | ComponentPublicInstance | null) {
+    editor.value = instance as EditorPaneApi | null;
+}
 
 /** Fill the area under the QLayout header instead of growing with content. */
 function fillPage(offset: number) {

@@ -11,7 +11,10 @@ import io.ottl.lang.ast.Expression;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -31,12 +34,21 @@ public final class Evaluator {
             case Expression.FloatLiteral f -> f.value();
             case Expression.BoolLiteral b -> b.value();
             case Expression.NilLiteral ignored -> null;
+            case Expression.BytesLiteral bytes -> bytes.value().clone();
             case Expression.ListLiteral list -> evalList(ctx, list);
+            case Expression.MapLiteral map -> evalMap(ctx, map);
+            case Expression.EnumSymbol symbol -> ctx.enumSymbol(symbol.name());
             case Expression.Path path -> {
+                if (ctx.isLocalPath(path)) {
+                    yield ctx.getPath(path.segments());
+                }
                 Optional<Object> enumConstant = ctx.enumConstant(path);
                 yield enumConstant.isPresent() ? enumConstant.get() : ctx.getPath(ctx.strip(path));
             }
             case Expression.FunctionCall call -> evalCall(ctx, call);
+            case Expression.Math math -> Arithmetic.eval(math.op(), eval(ctx, math.left()), eval(ctx, math.right()));
+            case Expression.Unary unary -> Arithmetic.unary(unary.op(), eval(ctx, unary.operand()));
+            case Expression.Lambda lambda -> new OttlLambda(lambda);
         };
     }
 
@@ -48,13 +60,29 @@ public final class Evaluator {
         return out;
     }
 
+    private static Map<String, Object> evalMap(ExecutionContext ctx, Expression.MapLiteral map) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Expression.MapEntry entry : map.entries()) {
+            Object key = eval(ctx, entry.key());
+            if (!(key instanceof String text)) {
+                throw new OttlEvaluationException("Map key must be a string but was " + describe(key));
+            }
+            if (out.containsKey(text)) {
+                throw new OttlEvaluationException("Duplicate map key '" + text + "'");
+            }
+            out.put(text, eval(ctx, entry.value()));
+        }
+        return out;
+    }
+
     private static Object evalCall(ExecutionContext ctx, Expression.FunctionCall call) {
         OttlFunction fn = ctx.functions().require(call.name());
-        List<Argument> args = new ArrayList<>(call.arguments().size());
-        for (Expression arg : call.arguments()) {
-            args.add(new Argument(arg, ctx));
+        List<Argument> args = CallBinder.bind(fn, call, ctx);
+        Object result = fn.invoke(ctx, args);
+        for (Expression key : call.keys()) {
+            result = ctx.index(result, eval(ctx, key));
         }
-        return fn.invoke(ctx, args);
+        return result;
     }
 
     public static boolean evalCondition(ExecutionContext ctx, Condition condition) {
@@ -90,6 +118,9 @@ public final class Evaluator {
         if (a == null || b == null) {
             return a == b;
         }
+        if (a instanceof byte[] left && b instanceof byte[] right) {
+            return Arrays.equals(left, right);
+        }
         if (a instanceof Number na && b instanceof Number nb) {
             return toBigDecimal(na).compareTo(toBigDecimal(nb)) == 0;
         }
@@ -101,6 +132,9 @@ public final class Evaluator {
         if (a == null || b == null) {
             throw new OttlEvaluationException("Cannot order-compare null (" + describe(a) + ", " + describe(b) + ")");
         }
+        if (a instanceof byte[] left && b instanceof byte[] right) {
+            return compareBytes(left, right);
+        }
         if (a instanceof Number na && b instanceof Number nb) {
             return toBigDecimal(na).compareTo(toBigDecimal(nb));
         }
@@ -109,6 +143,17 @@ public final class Evaluator {
         }
         throw new OttlEvaluationException(
                 "Values are not order-comparable: " + describe(a) + " and " + describe(b));
+    }
+
+    private static int compareBytes(byte[] left, byte[] right) {
+        int length = Math.min(left.length, right.length);
+        for (int i = 0; i < length; i++) {
+            int comparison = Byte.toUnsignedInt(left[i]) - Byte.toUnsignedInt(right[i]);
+            if (comparison != 0) {
+                return comparison;
+            }
+        }
+        return Integer.compare(left.length, right.length);
     }
 
     private static BigDecimal toBigDecimal(Number n) {

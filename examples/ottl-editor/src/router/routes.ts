@@ -1,6 +1,4 @@
 import type { RouteRecordRaw } from 'vue-router';
-import MainLayout from '../layouts/MainLayout.vue';
-import EditorPage from '../pages/EditorPage.vue';
 
 /**
  * Layout is the parent route; its <router-view> (inside QPageContainer) renders child pages.
@@ -9,9 +7,14 @@ import EditorPage from '../pages/EditorPage.vue';
 const routes: RouteRecordRaw[] = [
     {
         path: '/',
-        component: MainLayout,
-        children: [{ path: '', component: EditorPage }]
+        component: () => import('@/layouts/MainLayout.vue'),
+        children: [
+            { path: '', name: 'editor', component: () => import('@/pages/EditorPage.vue') },
+            { path: 'help', name: 'help', component: () => import('@/pages/HelpPage.vue') }
+        ]
     },
+
+    // Always leave this as last one.
     {
         path: '/:catchAll(.*)*',
         redirect: '/'

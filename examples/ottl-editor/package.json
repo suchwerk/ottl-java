@@ -1,37 +1,43 @@
 {
   "name": "ottl-editor",
   "version": "0.1.0",
+  "description": "Vue 3 / Quasar / Monaco editor for OTTL rules, backed by the OTTL language server over WebSocket.",
+  "productName": "OTTL Rule Editor",
   "private": true,
   "type": "module",
-  "description": "Vue 3 / Quasar / Monaco editor for OTTL rules, backed by the OTTL language server over WebSocket.",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "dev": "quasar dev",
+    "build": "vue-tsc --noEmit && quasar build",
+    "typecheck": "vue-tsc --noEmit",
+    "preview": "quasar serve dist",
+    "postinstall": "quasar prepare --silent",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
     "@codingame/monaco-vscode-editor-api": "^37.6.0",
     "@codingame/monaco-vscode-files-service-override": "^37.6.0",
-    "@quasar/extras": "^1.16.17",
+    "@quasar/extras": "^2.1.0",
+    "@quasar/quasar-ui-qmarkdown": "^4.2.1",
     "monaco-languageclient": "^11.0.3",
-    "quasar": "^2.17.7",
+    "quasar": "^2.35.2",
     "vscode": "npm:@codingame/monaco-vscode-extension-api@^37.6.0",
     "vscode-ws-jsonrpc": "^4.0.3",
-    "vue": "^3.5.13",
-    "vue-router": "^4.6.4"
+    "vue": "^3.5.22",
+    "vue-router": "^5.0.6"
   },
   "devDependencies": {
     "@codingame/monaco-vscode-rollup-vsix-plugin": "^37.6.0",
     "@playwright/test": "^1.49.1",
-    "@quasar/vite-plugin": "^1.9.0",
-    "@types/node": "^22.10.5",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "sass-embedded": "^1.83.4",
-    "typescript": "~5.6.3",
-    "vite": "^6.0.7",
-    "vue-tsc": "^2.2.0"
+    "@quasar/app-vite": "^3.10.3",
+    "@types/node": "^22.19.11",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "typescript": "^6.0.0",
+    "vue-tsc": "^3.3.3"
+  },
+  "engines": {
+    "node": ">= 26 || ^24 || ^22.12"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,

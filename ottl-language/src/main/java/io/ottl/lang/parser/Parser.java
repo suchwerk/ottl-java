@@ -10,17 +10,21 @@ import io.ottl.lang.ast.ComparisonOperator;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
 import io.ottl.lang.ast.IfStatement;
+import io.ottl.lang.ast.MathOp;
 import io.ottl.lang.ast.OttlScript;
 import io.ottl.lang.ast.ScriptItem;
 import io.ottl.lang.ast.Statement;
 import io.ottl.lang.ast.WhereBlock;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
- * A hand-written recursive-descent parser for the OTTL subset.
+ * A hand-written recursive-descent parser for OTTL.
  *
  * <p>Editor statements are self-delimiting: each one is an invocation ({@code name(args)}) with an
  * optional trailing {@code where} condition. A {@code where} block groups several items under one
@@ -34,14 +38,21 @@ import java.util.Optional;
  *                ("else" "if" condition block)*
  *                ("else" block)?                               # OttlDialect.EXTENDED
  * whereBlock  := "where" condition "{" item* "}"
- * statement   := functionCall ("where" condition)?
+ * statement   := editor ("where" condition)?
+ * editor      := lowercaseName "(" arguments ")"
  * condition   := orExpr
  * orExpr      := andExpr ("or" andExpr)*
  * andExpr     := unaryCond ("and" unaryCond)*
- * unaryCond   := "not" unaryCond | "(" condition ")" | comparison
- * comparison  := value (compOp value)?
- * value       := literal | list | functionCall | path
- * path        := IDENT ("." IDENT | "[" key "]")*
+ * unaryCond   := "not" unaryCond | comparison | "(" condition ")"
+ * comparison  := expression (compOp expression)?
+ * expression  := term (("+" | "-") term)*
+ * term        := unary (("*" | "/") unary)*
+ * unary       := ("+" | "-") unary | primary
+ * primary     := literal | list | map | bytes | lambda | converter | path | "(" expression ")"
+ * converter   := UppercaseName "(" arguments ")" ("[" expression "]")*
+ * path        := IDENT ("." IDENT | "[" expression "]")*
+ * map         := "{" (mapKey ":" expression ("," mapKey ":" expression)*)? ","? "}"
+ * lambda      := "(" parameters ")" "=>" (expression | condition)
  * </pre>
  *
  * <p>{@code if} and {@code else} are statement keywords in {@link OttlDialect#EXTENDED}. They stay
@@ -61,6 +72,7 @@ public final class Parser {
     private final int maxNesting;
     private int index;
     private int depth;
+    private int parenDepth;
 
     public Parser(List<Token> tokens) {
         this(tokens, OttlDialect.OTTL, MAX_NESTING);
@@ -240,7 +252,7 @@ public final class Parser {
         if (nameTok.type() != TokenType.IDENT) {
             throw error(nameTok, "Expected a statement (an editor function call)");
         }
-        Expression.FunctionCall editor = functionCall();
+        Expression.FunctionCall editor = functionCall(true);
         Optional<Condition> where = Optional.empty();
         // Newlines do not end a statement, so `where <condition> {` after an editor is the next
         // block, not this statement's guard. A trailing where has no '{' after its condition.
@@ -299,19 +311,34 @@ public final class Parser {
             advance();
             return new Condition.Not(unaryCond());
         }
-        if (check(TokenType.LPAREN)) {
-            advance();
-            Condition inner = condition();
-            expect(TokenType.RPAREN, "')' to close condition group");
-            return inner;
-        }
-        Expression left = value();
-        ComparisonOperator op = comparisonOperator();
-        if (op == null) {
+        // A leading '(' may group a boolean expression or a math expression. Try the value form
+        // first so `(1 + 2) > 3` is a comparison. If that fails, group a boolean expression.
+        int mark = index;
+        OttlParseException valueFailure = null;
+        try {
+            Expression left = expression();
+            ComparisonOperator op = comparisonOperator();
+            if (op != null) {
+                Expression right = expression();
+                return new Condition.Comparison(left, op, right);
+            }
             return new Condition.ValueCondition(left);
+        } catch (OttlParseException ex) {
+            valueFailure = ex;
+            index = mark;
         }
-        Expression right = value();
-        return new Condition.Comparison(left, op, right);
+        if (check(TokenType.LPAREN)) {
+            Token open = advance();
+            enterParen(open);
+            try {
+                Condition inner = condition();
+                expect(TokenType.RPAREN, "')' to close condition group");
+                return inner;
+            } finally {
+                parenDepth--;
+            }
+        }
+        throw valueFailure;
     }
 
     private ComparisonOperator comparisonOperator() {
@@ -333,7 +360,59 @@ public final class Parser {
 
     // ----- values -----
 
-    private Expression value() {
+    /** Addition and subtraction, left-associative and looser than {@link #term()}. */
+    private Expression expression() {
+        Expression left = term();
+        while (check(TokenType.PLUS) || check(TokenType.MINUS)) {
+            MathOp op = advance().type() == TokenType.PLUS ? MathOp.ADD : MathOp.SUB;
+            Expression right = term();
+            left = new Expression.Math(left, op, right);
+        }
+        return left;
+    }
+
+    /** Multiplication and division, left-associative. */
+    private Expression term() {
+        Expression left = unary();
+        while (check(TokenType.STAR) || check(TokenType.SLASH)) {
+            MathOp op = advance().type() == TokenType.STAR ? MathOp.MUL : MathOp.DIV;
+            Expression right = unary();
+            left = new Expression.Math(left, op, right);
+        }
+        return left;
+    }
+
+    private Expression unary() {
+        if (check(TokenType.PLUS) || check(TokenType.MINUS)) {
+            Token opTok = advance();
+            MathOp op = opTok.type() == TokenType.PLUS ? MathOp.ADD : MathOp.SUB;
+            return applyUnary(op, primary(), opTok);
+        }
+        return primary();
+    }
+
+    /** Fold {@code -3} and {@code +1.5} into literals. Keep a node when the operand is computed. */
+    private Expression applyUnary(MathOp op, Expression operand, Token at) {
+        if (op == MathOp.ADD) {
+            if (operand instanceof Expression.IntLiteral || operand instanceof Expression.FloatLiteral) {
+                return operand;
+            }
+            return new Expression.Unary(op, operand);
+        }
+        try {
+            if (operand instanceof Expression.IntLiteral i) {
+                return new Expression.IntLiteral(Math.negateExact(i.value()));
+            }
+        } catch (ArithmeticException ex) {
+            throw error(at, "Integer overflow applying '-'");
+        }
+        if (operand instanceof Expression.FloatLiteral f) {
+            return new Expression.FloatLiteral(-f.value());
+        }
+        return new Expression.Unary(op, operand);
+    }
+
+    private Expression primary() {
         Token t = peek();
         switch (t.type()) {
             case STRING:
@@ -345,10 +424,18 @@ public final class Parser {
             case FLOAT:
                 advance();
                 return new Expression.FloatLiteral(parseDouble(t));
-            case MINUS:
-                return negativeNumber();
+            case BYTES:
+                advance();
+                return new Expression.BytesLiteral(HexFormat.of().parseHex(t.text()));
             case LBRACKET:
                 return listLiteral();
+            case LBRACE:
+                return mapLiteral();
+            case LPAREN:
+                if (looksLikeLambda()) {
+                    return lambda();
+                }
+                return grouped();
             case IDENT:
                 return identifierValue();
             default:
@@ -356,38 +443,73 @@ public final class Parser {
         }
     }
 
-    private Expression negativeNumber() {
-        Token minus = advance();
-        Token t = peek();
-        if (t.type() == TokenType.INT) {
-            advance();
-            return new Expression.IntLiteral(-parseLong(t));
+    private Expression grouped() {
+        Token open = advance();
+        enterParen(open);
+        try {
+            Expression inner = expression();
+            expect(TokenType.RPAREN, "')' to close group");
+            return inner;
+        } finally {
+            parenDepth--;
         }
-        if (t.type() == TokenType.FLOAT) {
-            advance();
-            return new Expression.FloatLiteral(-parseDouble(t));
-        }
-        throw error(minus, "Unary '-' must be followed by a number");
     }
 
     private Expression listLiteral() {
         advance(); // '['
         List<Expression> elements = new ArrayList<>();
         if (!check(TokenType.RBRACKET)) {
-            elements.add(value());
+            elements.add(expression());
             while (check(TokenType.COMMA)) {
                 advance();
-                elements.add(value());
+                elements.add(expression());
             }
         }
         expect(TokenType.RBRACKET, "']' to close list");
         return new Expression.ListLiteral(elements);
     }
 
+    private Expression mapLiteral() {
+        advance(); // '{'
+        List<Expression.MapEntry> entries = new ArrayList<>();
+        if (!check(TokenType.RBRACE)) {
+            entries.add(mapEntry());
+            while (check(TokenType.COMMA)) {
+                advance();
+                if (check(TokenType.RBRACE)) {
+                    break;
+                }
+                entries.add(mapEntry());
+            }
+        }
+        expect(TokenType.RBRACE, "'}' to close map");
+        return new Expression.MapLiteral(entries);
+    }
+
+    private Expression.MapEntry mapEntry() {
+        Expression key = mapKey();
+        expect(TokenType.COLON, "':' after map key");
+        return new Expression.MapEntry(key, expression());
+    }
+
+    /** A map key is a string literal, a path, or a converter. */
+    private Expression mapKey() {
+        if (check(TokenType.STRING)) {
+            Token key = advance();
+            return new Expression.StringLiteral(key.text());
+        }
+        if (check(TokenType.IDENT) && nextIs(1, TokenType.LPAREN)) {
+            return functionCall(false);
+        }
+        if (check(TokenType.IDENT) && !isBareLiteral(peek())) {
+            return path();
+        }
+        throw error(peek(), "Map key must be a string, path, or converter");
+    }
+
     private Expression identifierValue() {
         Token t = peek();
         String name = t.text();
-        // Reserved literals (only when not used as a call/path head).
         if (!nextIs(1, TokenType.LPAREN) && !nextIs(1, TokenType.DOT) && !nextIs(1, TokenType.LBRACKET)) {
             switch (name) {
                 case "true":
@@ -402,55 +524,243 @@ public final class Parser {
                 default:
                     break;
             }
+            if (isEnumSymbol(name)) {
+                advance();
+                return new Expression.EnumSymbol(name);
+            }
         }
         if (nextIs(1, TokenType.LPAREN)) {
-            return functionCall();
+            return functionCall(false);
         }
         return path();
     }
 
-    private Expression.FunctionCall functionCall() {
+    /** OTTL enum symbols are a single run of uppercase letters, digits, and underscores. */
+    private static boolean isEnumSymbol(String name) {
+        if (name.isEmpty() || !isUpper(name.charAt(0))) {
+            return false;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (!(isUpper(c) || isDigit(c) || c == '_')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * @param editor {@code true} for a statement editor (lowercase name, no trailing indexes).
+     *               {@code false} for a converter (uppercase name, optional indexes).
+     */
+    private Expression.FunctionCall functionCall(boolean editor) {
         Token nameTok = expect(TokenType.IDENT, "function name");
+        String name = nameTok.text();
+        if (editor) {
+            if (!startsWithLower(name)) {
+                throw error(nameTok, "Editor names must start with a lowercase letter but got '" + name + "'");
+            }
+        } else if (!startsWithUpper(name)) {
+            throw error(nameTok, "Converter names must start with an uppercase letter but got '" + name + "'");
+        }
         expect(TokenType.LPAREN, "'(' after function name");
         List<Expression> args = new ArrayList<>();
+        List<Optional<String>> names = new ArrayList<>();
+        boolean seenNamed = false;
         if (!check(TokenType.RPAREN)) {
-            args.add(value());
+            seenNamed = argument(args, names, seenNamed);
             while (check(TokenType.COMMA)) {
                 advance();
-                args.add(value());
+                seenNamed = argument(args, names, seenNamed);
             }
         }
         expect(TokenType.RPAREN, "')' to close argument list");
-        return new Expression.FunctionCall(nameTok.text(), args);
+        List<Expression> keys = new ArrayList<>();
+        while (check(TokenType.LBRACKET)) {
+            if (editor) {
+                throw error(peek(), "Only paths and converters may be indexed, not editors");
+            }
+            advance();
+            keys.add(expression());
+            expect(TokenType.RBRACKET, "']' to close index");
+        }
+        return new Expression.FunctionCall(name, args, names, keys);
+    }
+
+    /** @return {@code true} once a named argument has been seen */
+    private boolean argument(List<Expression> args, List<Optional<String>> names, boolean seenNamed) {
+        if (check(TokenType.IDENT) && nextIs(1, TokenType.ASSIGN) && isArgumentName(peek().text())) {
+            Token name = advance();
+            advance(); // '='
+            seenNamed = true;
+            names.add(Optional.of(name.text()));
+            args.add(expression());
+            return true;
+        }
+        if (seenNamed) {
+            throw error(peek(), "Named arguments must come after positional arguments");
+        }
+        names.add(Optional.empty());
+        args.add(expression());
+        return false;
     }
 
     private Expression.Path path() {
         List<Expression.PathSegment> segments = new ArrayList<>();
         Token first = expect(TokenType.IDENT, "path segment");
         segments.add(new Expression.FieldSegment(first.text()));
-        while (true) {
-            if (check(TokenType.DOT)) {
-                advance();
-                Token field = expect(TokenType.IDENT, "field name after '.'");
-                segments.add(new Expression.FieldSegment(field.text()));
-            } else if (check(TokenType.LBRACKET)) {
-                advance();
-                Token key = peek();
-                if (key.type() == TokenType.STRING) {
-                    advance();
-                    segments.add(new Expression.KeySegment(key.text()));
-                } else if (key.type() == TokenType.INT) {
-                    advance();
-                    segments.add(new Expression.KeySegment(parseLong(key)));
-                } else {
-                    throw error(key, "Map/index key must be a string or integer");
-                }
-                expect(TokenType.RBRACKET, "']' to close key access");
-            } else {
-                break;
-            }
+        readIndexes(segments);
+        while (check(TokenType.DOT)) {
+            advance();
+            Token field = expect(TokenType.IDENT, "field name after '.'");
+            segments.add(new Expression.FieldSegment(field.text()));
+            readIndexes(segments);
         }
         return new Expression.Path(segments);
+    }
+
+    private void readIndexes(List<Expression.PathSegment> segments) {
+        while (check(TokenType.LBRACKET)) {
+            advance();
+            Expression key = expression();
+            expect(TokenType.RBRACKET, "']' to close key access");
+            if (key instanceof Expression.StringLiteral s) {
+                segments.add(new Expression.KeySegment(s.value()));
+            } else if (key instanceof Expression.IntLiteral i) {
+                segments.add(new Expression.KeySegment(i.value()));
+            } else {
+                segments.add(new Expression.DynamicKeySegment(key));
+            }
+        }
+    }
+
+    private Expression lambda() {
+        Token open = expect(TokenType.LPAREN, "'(' to open lambda");
+        enterParen(open);
+        List<String> params = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        try {
+            if (!check(TokenType.RPAREN)) {
+                params.add(lambdaParam(seen));
+                while (check(TokenType.COMMA)) {
+                    advance();
+                    params.add(lambdaParam(seen));
+                }
+            }
+            expect(TokenType.RPAREN, "')' after lambda parameters");
+        } finally {
+            parenDepth--;
+        }
+        expect(TokenType.ARROW, "'=>' after lambda parameters");
+        Expression.LambdaBody body = lambdaBody();
+        if (body instanceof Expression.LambdaValue value && value.expression() instanceof Expression.Lambda) {
+            throw error(open, "Lambda body cannot be another lambda");
+        }
+        return new Expression.Lambda(params, body);
+    }
+
+    private String lambdaParam(Set<String> seen) {
+        Token name = expect(TokenType.IDENT, "lambda parameter");
+        if (!isLambdaParam(name.text())) {
+            throw error(name, "Lambda parameter must be a lowercase identifier or '_'");
+        }
+        if (!name.text().equals("_") && !seen.add(name.text())) {
+            throw error(name, "Duplicate lambda parameter '" + name.text() + "'");
+        }
+        return name.text();
+    }
+
+    /**
+     * A lambda body is a value when it is not a comparison or a boolean combination, and a
+     * condition otherwise. {@code (n) => n + 1} is a value. {@code (a, b) => a == b} is a condition.
+     */
+    private Expression.LambdaBody lambdaBody() {
+        Condition condition = condition();
+        if (condition instanceof Condition.ValueCondition value) {
+            return new Expression.LambdaValue(value.expression());
+        }
+        return new Expression.LambdaCondition(condition);
+    }
+
+    /** {@code (params) =>} or {@code () =>}, without consuming tokens. */
+    private boolean looksLikeLambda() {
+        if (!check(TokenType.LPAREN)) {
+            return false;
+        }
+        int i = index + 1;
+        if (i >= tokens.size()) {
+            return false;
+        }
+        if (tokens.get(i).type() == TokenType.RPAREN) {
+            return tokenIs(i + 1, TokenType.ARROW);
+        }
+        if (!isLambdaParam(tokens.get(i).text()) || tokens.get(i).type() != TokenType.IDENT) {
+            return false;
+        }
+        i++;
+        while (i < tokens.size() && tokens.get(i).type() == TokenType.COMMA) {
+            i++;
+            if (i >= tokens.size() || tokens.get(i).type() != TokenType.IDENT || !isLambdaParam(tokens.get(i).text())) {
+                return false;
+            }
+            i++;
+        }
+        return i < tokens.size()
+                && tokens.get(i).type() == TokenType.RPAREN
+                && tokenIs(i + 1, TokenType.ARROW);
+    }
+
+    private static boolean isLambdaParam(String name) {
+        if (name.equals("_")) {
+            return true;
+        }
+        if (name.isEmpty() || !isLower(name.charAt(0))) {
+            return false;
+        }
+        for (int i = 1; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (!(isLower(c) || isDigit(c) || c == '_')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Named-argument names use the OTTL lowercase form, e.g. {@code target}. */
+    private static boolean isArgumentName(String name) {
+        return isLambdaParam(name) && !name.equals("_");
+    }
+
+    private static boolean startsWithLower(String name) {
+        return !name.isEmpty() && isLower(name.charAt(0));
+    }
+
+    private static boolean startsWithUpper(String name) {
+        return !name.isEmpty() && isUpper(name.charAt(0));
+    }
+
+    private static boolean isBareLiteral(Token token) {
+        return token.type() == TokenType.IDENT
+                && (token.text().equals("true") || token.text().equals("false") || token.text().equals("nil"));
+    }
+
+    private void enterParen(Token at) {
+        if (parenDepth + 1 > MAX_NESTING) {
+            throw error(at, "Nesting too deep (limit " + MAX_NESTING + ")");
+        }
+        parenDepth++;
+    }
+
+    private static boolean isLower(char c) {
+        return c >= 'a' && c <= 'z';
+    }
+
+    private static boolean isUpper(char c) {
+        return c >= 'A' && c <= 'Z';
+    }
+
+    private static boolean isDigit(char c) {
+        return c >= '0' && c <= '9';
     }
 
     // ----- helpers -----
@@ -481,8 +791,11 @@ public final class Parser {
     }
 
     private boolean nextIs(int ahead, TokenType type) {
-        int i = index + ahead;
-        return i < tokens.size() && tokens.get(i).type() == type;
+        return tokenIs(index + ahead, type);
+    }
+
+    private boolean tokenIs(int position, TokenType type) {
+        return position < tokens.size() && tokens.get(position).type() == type;
     }
 
     private Token peek() {

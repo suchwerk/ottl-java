@@ -23,6 +23,11 @@ public interface OttlFunction {
     /** Execute the function. Editors mutate {@code ctx}; converters return a value. */
     Object invoke(ExecutionContext ctx, List<Argument> args);
 
+    /** Parameter names in order. Named arguments bind to these. Empty when the function is positional only. */
+    default List<String> parameterNames() {
+        return List.of();
+    }
+
     /** Minimum number of arguments (inclusive), validated at compile time. */
     default int minArgs() {
         return 0;

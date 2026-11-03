@@ -35,7 +35,7 @@ export default defineConfig({
             env: { JAVA_HOME: javaHome }
         },
         {
-            // Vite dev server for the Vue/Quasar front end (proxies REST + WS to Quarkus).
+            // Quasar CLI dev server for the Vue/Quasar front end (proxies REST + WS to Quarkus).
             command: 'npm run dev',
             cwd: thisDir,
             url: 'http://localhost:5173',

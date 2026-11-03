@@ -4,7 +4,7 @@
  */
 package io.ottl.lang.parser;
 
-/** The lexical token categories of the OTTL subset. */
+/** The lexical token categories of OTTL. */
 public enum TokenType {
     IDENT,
     STRING,
@@ -18,12 +18,19 @@ public enum TokenType {
     RBRACE,
     COMMA,
     DOT,
+    COLON,
+    PLUS,
     MINUS,
+    STAR,
+    SLASH,
+    ASSIGN,
+    ARROW,
     EQ,
     NE,
     LT,
     LE,
     GT,
     GE,
+    BYTES,
     EOF
 }

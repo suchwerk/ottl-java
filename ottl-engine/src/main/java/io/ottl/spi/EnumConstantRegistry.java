@@ -114,6 +114,38 @@ public class EnumConstantRegistry {
         return null;
     }
 
+    /**
+     * Resolve a bare enum symbol such as {@code SPAN_KIND_SERVER}.
+     *
+     * @return {@code null} when no registered constant has that name, or a lookup whose
+     *     {@link SymbolLookup#ambiguous()} is true when more than one enum defines it
+     */
+    public SymbolLookup symbol(String name) {
+        if (name == null) {
+            return null;
+        }
+        Object found = null;
+        int matches = 0;
+        for (EnumType type : types) {
+            if (!type.constants.containsKey(name)) {
+                continue;
+            }
+            matches++;
+            found = type.constants.get(name);
+        }
+        if (matches == 0) {
+            return null;
+        }
+        if (matches > 1) {
+            return new SymbolLookup(null, true);
+        }
+        return new SymbolLookup(found, false);
+    }
+
+    /** Result of {@link #symbol(String)}. */
+    public record SymbolLookup(Object value, boolean ambiguous) {
+    }
+
     /** One allowlisted enum and its constant names, in declaration order. */
     public static final class EnumType {
         private final String simpleName;

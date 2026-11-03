@@ -9,7 +9,7 @@ import type * as monaco from '@codingame/monaco-vscode-editor-api';
 export const OTTL_LANGUAGE_ID = 'ottl';
 
 export const ottlLanguageConfiguration: monaco.languages.LanguageConfiguration = {
-    comments: { lineComment: '#' },
+    comments: { lineComment: '//' },
     brackets: [
         ['(', ')'],
         ['[', ']'],
@@ -38,12 +38,13 @@ export const ottlMonarchTokens: monaco.languages.IMonarchLanguage = {
     ignoreCase: false,
     keywords: ['where', 'and', 'or', 'not', 'if', 'else'],
     constants: ['true', 'false', 'nil'],
-    operators: ['==', '!=', '>', '>=', '<', '<=', '='],
-    symbols: /[=><!]+/,
+    operators: ['==', '!=', '>', '>=', '<', '<=', '=', '+', '-', '*', '/', '=>'],
+    symbols: /=>|==|!=|>=|<=|[+\-*/=><!]+/,
     tokenizer: {
         root: [
-            // the `# context: Order` directive and ordinary comments
+            // `# context: Order`, `#` comments, and OTTL `//` comments
             [/#.*$/, 'comment'],
+            [/\/\/.*$/, 'comment'],
 
             // function call: identifier immediately followed by '('
             [/[a-zA-Z_]\w*(?=\s*\()/, 'entity.name.function'],
@@ -57,12 +58,15 @@ export const ottlMonarchTokens: monaco.languages.IMonarchLanguage = {
                 }
             }],
 
+            // numbers before '.' so `.5` is a float and `0x10` is a byte slice
+            [/0x[0-9a-fA-F]+/, 'number.hex'],
+            [/\.\d+([eE][-+]?\d+)?/, 'number.float'],
+            [/\d+\.\d*([eE][-+]?\d+)?/, 'number.float'],
+            [/\d+[eE][-+]?\d+/, 'number.float'],
+            [/\d+/, 'number'],
+
             // property access dot
             [/\./, 'delimiter'],
-
-            // numbers
-            [/\d+\.\d+([eE][-+]?\d+)?/, 'number.float'],
-            [/\d+/, 'number'],
 
             // strings
             [/"/, { token: 'string.quote', next: '@string' }],

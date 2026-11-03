@@ -22,6 +22,11 @@ public final class SetFunction implements OttlFunction {
     }
 
     @Override
+    public List<String> parameterNames() {
+        return List.of("target", "value");
+    }
+
+    @Override
     public int minArgs() {
         return 2;
     }

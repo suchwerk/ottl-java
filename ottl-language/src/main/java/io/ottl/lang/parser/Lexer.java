@@ -8,10 +8,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A small, allocation-light, hand-written lexer for the OTTL subset.
+ * A small, allocation-light, hand-written lexer for OTTL.
  *
  * <p>The lexer is whitespace- and newline-insensitive (statements are self-delimiting in the
- * grammar) and supports {@code #} line comments for authoring convenience.
+ * grammar). Line comments are {@code //} (OTTL) and {@code #} (ottl-java authoring convenience).
  */
 public final class Lexer {
 
@@ -50,6 +50,9 @@ public final class Lexer {
         if (c == '"') {
             return string(startLine, startCol);
         }
+        if (c == '.' && isDigit(peekNext())) {
+            return leadingDotFloat(startLine, startCol);
+        }
         if (Character.isDigit(c)) {
             return number(startLine, startCol);
         }
@@ -78,11 +81,26 @@ public final class Lexer {
                 return new Token(TokenType.COMMA, ",", startLine, startCol);
             case '.':
                 return new Token(TokenType.DOT, ".", startLine, startCol);
+            case ':':
+                return new Token(TokenType.COLON, ":", startLine, startCol);
+            case '+':
+                return new Token(TokenType.PLUS, "+", startLine, startCol);
             case '-':
                 return new Token(TokenType.MINUS, "-", startLine, startCol);
+            case '*':
+                return new Token(TokenType.STAR, "*", startLine, startCol);
+            case '/':
+                return new Token(TokenType.SLASH, "/", startLine, startCol);
             case '=':
-                expect('=', startLine, startCol, "'=' (did you mean '=='?)");
-                return new Token(TokenType.EQ, "==", startLine, startCol);
+                if (!atEnd() && peek() == '=') {
+                    advance();
+                    return new Token(TokenType.EQ, "==", startLine, startCol);
+                }
+                if (!atEnd() && peek() == '>') {
+                    advance();
+                    return new Token(TokenType.ARROW, "=>", startLine, startCol);
+                }
+                return new Token(TokenType.ASSIGN, "=", startLine, startCol);
             case '!':
                 expect('=', startLine, startCol, "'!' (did you mean '!='?)");
                 return new Token(TokenType.NE, "!=", startLine, startCol);
@@ -140,12 +158,15 @@ public final class Lexer {
     }
 
     private Token number(int startLine, int startCol) {
+        if (peek() == '0' && peekNext() == 'x') {
+            return bytes(startLine, startCol);
+        }
         StringBuilder sb = new StringBuilder();
         while (!atEnd() && Character.isDigit(peek())) {
             sb.append(advance());
         }
         boolean isFloat = false;
-        if (!atEnd() && peek() == '.' && isDigit(peekNext())) {
+        if (!atEnd() && peek() == '.') {
             isFloat = true;
             sb.append(advance()); // '.'
             while (!atEnd() && Character.isDigit(peek())) {
@@ -155,14 +176,54 @@ public final class Lexer {
         if (!atEnd() && (peek() == 'e' || peek() == 'E')) {
             isFloat = true;
             sb.append(advance());
-            if (!atEnd() && (peek() == '+' || peek() == '-')) {
-                sb.append(advance());
-            }
-            while (!atEnd() && Character.isDigit(peek())) {
-                sb.append(advance());
-            }
+            exponent(sb, startLine, startCol);
         }
         return new Token(isFloat ? TokenType.FLOAT : TokenType.INT, sb.toString(), startLine, startCol);
+    }
+
+    /** A float that starts with a dot, e.g. {@code .5} or {@code .5e-1}. */
+    private Token leadingDotFloat(int startLine, int startCol) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(advance()); // '.'
+        while (!atEnd() && Character.isDigit(peek())) {
+            sb.append(advance());
+        }
+        if (!atEnd() && (peek() == 'e' || peek() == 'E')) {
+            sb.append(advance());
+            exponent(sb, startLine, startCol);
+        }
+        return new Token(TokenType.FLOAT, sb.toString(), startLine, startCol);
+    }
+
+    private void exponent(StringBuilder sb, int startLine, int startCol) {
+        if (!atEnd() && (peek() == '+' || peek() == '-')) {
+            sb.append(advance());
+        }
+        if (atEnd() || !Character.isDigit(peek())) {
+            throw new OttlParseException("Invalid float literal '" + sb + "'", startLine, startCol);
+        }
+        while (!atEnd() && Character.isDigit(peek())) {
+            sb.append(advance());
+        }
+    }
+
+    /** {@code 0x} followed by an even number of hex digits. The token text is the hex payload. */
+    private Token bytes(int startLine, int startCol) {
+        advance(); // '0'
+        advance(); // 'x'
+        StringBuilder hex = new StringBuilder();
+        while (!atEnd() && isHex(peek())) {
+            hex.append(advance());
+        }
+        if (hex.isEmpty()) {
+            throw new OttlParseException("Byte literal requires hexadecimal digits after '0x'", startLine, startCol);
+        }
+        if ((hex.length() & 1) != 0) {
+            throw new OttlParseException(
+                    "Byte literals must have an even number of hexadecimal digits, but got 0x" + hex,
+                    startLine, startCol);
+        }
+        return new Token(TokenType.BYTES, hex.toString(), startLine, startCol);
     }
 
     private Token identifier(int startLine, int startCol) {
@@ -182,6 +243,12 @@ public final class Lexer {
                 while (!atEnd() && peek() != '\n') {
                     advance();
                 }
+            } else if (c == '/' && peekNext() == '/') {
+                advance();
+                advance();
+                while (!atEnd() && peek() != '\n') {
+                    advance();
+                }
             } else {
                 return;
             }
@@ -198,6 +265,10 @@ public final class Lexer {
 
     private static boolean isDigit(char c) {
         return c >= '0' && c <= '9';
+    }
+
+    private static boolean isHex(char c) {
+        return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
     private boolean atEnd() {

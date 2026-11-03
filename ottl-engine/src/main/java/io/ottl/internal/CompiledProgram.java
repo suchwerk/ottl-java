@@ -6,7 +6,7 @@ package io.ottl.internal;
 
 import io.ottl.ExecutionMode;
 import io.ottl.OttlProgram;
-import io.ottl.function.Argument;
+import io.ottl.function.CallBinder;
 import io.ottl.function.Evaluator;
 import io.ottl.function.ExecutionContext;
 import io.ottl.function.FunctionRegistry;
@@ -21,7 +21,6 @@ import io.ottl.lang.ast.WhereBlock;
 import io.ottl.spi.EnumConstantRegistry;
 import io.ottl.spi.ResolverRegistry;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -90,11 +89,7 @@ public final class CompiledProgram<T> implements OttlProgram<T> {
 
     private void invokeEditor(ExecutionContext ctx, Expression.FunctionCall editor) {
         OttlFunction fn = functions.require(editor.name());
-        List<Argument> args = new ArrayList<>(editor.arguments().size());
-        for (Expression arg : editor.arguments()) {
-            args.add(new Argument(arg, ctx));
-        }
-        fn.invoke(ctx, args);
+        fn.invoke(ctx, CallBinder.bind(fn, editor, ctx));
     }
 
     @Override

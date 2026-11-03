@@ -20,18 +20,22 @@
 
                 <q-separator vertical dark inset class="q-mx-sm" />
 
-                <q-btn flat dense icon="fact_check" label="Validate" :disable="!loaded" @click="validate" />
-                <q-btn flat dense icon="play_arrow" label="Test" :disable="!loaded" @click="scrollToTest" />
+                <q-btn flat dense icon="fact_check" label="Validate" :disable="!loaded || !onEditor" @click="validate" />
+                <q-btn flat dense icon="play_arrow" label="Test" :disable="!loaded || !onEditor" @click="scrollToTest" />
                 <q-btn
                     flat
                     dense
                     icon="save"
                     label="Save &amp; Activate"
-                    :disable="!loaded"
+                    :disable="!loaded || !onEditor"
                     data-testid="activate-btn"
                     @click="activate"
                 />
-                <q-btn flat dense icon="undo" label="Revert" :disable="!loaded" @click="revert" />
+                <q-btn flat dense icon="undo" label="Revert" :disable="!loaded || !onEditor" @click="revert" />
+
+                <q-separator vertical dark inset class="q-mx-sm" />
+
+                <q-btn flat dense icon="help_outline" label="Help" to="/help" />
 
                 <q-separator vertical dark inset class="q-mx-sm" />
 
@@ -50,8 +54,11 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { Dark } from 'quasar';
+import { useRoute } from 'vue-router';
 import { useEditorSession } from '../composables/useEditorSession';
 
+const route = useRoute();
+const onEditor = computed(() => route.name === 'editor');
 const { loaded, lspStatus, statusColor, validate, activate, revert, scrollToTest, load } = useEditorSession();
 const isDark = computed(() => Dark.isActive);
 
