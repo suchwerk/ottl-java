@@ -21,8 +21,10 @@ so you can change transformation logic without redeploying.
   constant or computed indexes, comparisons, boolean logic, arithmetic (`+ - * /`), named arguments,
   converter indexing, lambdas, `where`, sequential statements, `where { }` blocks, enum constants
   (`OrderStatus.PENDING` and a bare `SPAN_KIND_SERVER` when it is unambiguous), the `set` /
-  `delete_key` / `keep_keys` editors, and the converters `Concat`, `Double`, `Int`, `IsMatch`,
-  `Len`, `Split`, `String`, `Substring`, and `Trim`. The rest of the collector converter library
+  `delete_key` / `keep_keys` / `replace_match` / `replace_all_matches` / `replace_pattern` /
+  `replace_all_patterns` editors, and the converters `Concat`, `ConvertCase`, `Double`, `Int`,
+  `IsBool`, `IsDouble`, `IsList`, `IsMap`, `IsMatch`, `IsString`, `Len`, `Split`, `String`,
+  `Substring`, `Trim`, `TrimPrefix`, and `TrimSuffix`. The rest of the collector function library
   is not bundled. No built-in function takes a lambda.
 - ✅ Optional **extended dialect** (`OttlDialect.EXTENDED`): statement blocks and `if` / `else if` /
   `else`. This is not official OTTL. The default dialect stays `OTTL`.
