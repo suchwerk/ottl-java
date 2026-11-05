@@ -5,6 +5,7 @@
                 <rule-list
                     :rules="rules"
                     :selected-key="selectedKey"
+                    :dirty="dirty"
                     @select="selectRule"
                     @refresh="loadRules"
                 />
@@ -54,6 +55,7 @@ const {
     context,
     contextNames,
     selectedKey,
+    dirty,
     editorText,
     source,
     editor,

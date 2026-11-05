@@ -6,6 +6,7 @@
             outlined
             dense
             label="Context type"
+            data-testid="context-select"
             :model-value="context"
             :options="contextNames"
             @update:model-value="$emit('update:context', $event)"

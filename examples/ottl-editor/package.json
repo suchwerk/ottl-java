@@ -9,6 +9,7 @@
     "dev": "quasar dev",
     "build": "vue-tsc --noEmit && quasar build",
     "typecheck": "vue-tsc --noEmit",
+    "test:unit": "node --experimental-strip-types --test src/composables/editorSessionPolicy.test.ts",
     "preview": "quasar serve dist",
     "postinstall": "quasar prepare --silent",
     "test:e2e": "playwright test",

@@ -92,6 +92,21 @@ class EditorResourceTest {
     }
 
     @Test
+    void activateRejectsARuleIdFromAnotherContext() {
+        given().contentType(ContentType.JSON)
+                .body("{\"context\":\"Customer\",\"ruleId\":\"order-rules\","
+                        + "\"source\":\"set(customer.tier, \\\"GOLD\\\")\"}")
+                .when().post("/editor/activate")
+                .then().statusCode(400)
+                .body("error", containsString("does not belong"));
+
+        given().when().get("/editor/rules")
+                .then().statusCode(200)
+                .body("find { it.context == 'Customer' }.source", is("set(customer.tier, \"STANDARD\")"))
+                .body("source", not(hasItem(containsString("GOLD"))));
+    }
+
+    @Test
     void activateUpdatesTheRuntimeRule() {
         try {
             given().contentType(ContentType.JSON)

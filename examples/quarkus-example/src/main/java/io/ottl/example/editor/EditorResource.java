@@ -111,7 +111,12 @@ public class EditorResource {
         if (ctx == null) {
             return badRequest("Unknown context: " + req.context());
         }
-        String ruleId = (req.ruleId() == null || req.ruleId().isBlank()) ? ctx.ruleId() : req.ruleId();
+        // Each context has one canonical rule. A rule id from another context must not be
+        // activated on this context's RuleManager.
+        if (req.ruleId() != null && !req.ruleId().isBlank() && !req.ruleId().equals(ctx.ruleId())) {
+            return badRequest("Rule '" + req.ruleId() + "' does not belong to context '" + ctx.name() + "'");
+        }
+        String ruleId = ctx.ruleId();
         try {
             ctx.manager().activate(ruleId, req.source());
         } catch (OttlException e) {

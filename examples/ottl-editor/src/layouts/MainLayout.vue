@@ -20,6 +20,20 @@
 
                 <q-separator vertical dark inset class="q-mx-sm" />
 
+                <q-chip outline dense data-testid="selected-rule">
+                    {{ selectedRule ? selectedRule.ruleId + ' · v' + selectedRule.version : 'No rule selected' }}
+                </q-chip>
+                <q-chip
+                    v-if="dirty"
+                    color="warning"
+                    text-color="black"
+                    dense
+                    data-testid="unsaved-indicator"
+                    label="Unsaved"
+                />
+
+                <q-separator vertical dark inset class="q-mx-sm" />
+
                 <q-btn flat dense icon="fact_check" label="Validate" :disable="!loaded || !onEditor" @click="validate" />
                 <q-btn flat dense icon="play_arrow" label="Test" :disable="!loaded || !onEditor" @click="scrollToTest" />
                 <q-btn
@@ -27,11 +41,20 @@
                     dense
                     icon="save"
                     label="Save &amp; Activate"
-                    :disable="!loaded || !onEditor"
+                    :disable="!loaded || !onEditor || !selectedRule"
+                    :loading="activating"
                     data-testid="activate-btn"
                     @click="activate"
                 />
-                <q-btn flat dense icon="undo" label="Revert" :disable="!loaded || !onEditor" @click="revert" />
+                <q-btn
+                    flat
+                    dense
+                    icon="undo"
+                    label="Revert"
+                    :disable="!loaded || !onEditor || !selectedRule"
+                    data-testid="revert-btn"
+                    @click="revert"
+                />
 
                 <q-separator vertical dark inset class="q-mx-sm" />
 
@@ -59,7 +82,8 @@ import { useEditorSession } from '../composables/useEditorSession';
 
 const route = useRoute();
 const onEditor = computed(() => route.name === 'editor');
-const { loaded, lspStatus, statusColor, validate, activate, revert, scrollToTest, load } = useEditorSession();
+const { loaded, lspStatus, statusColor, selectedRule, dirty, activating, validate, activate, revert, scrollToTest, load } =
+    useEditorSession();
 const isDark = computed(() => Dark.isActive);
 
 function toggleDark() {

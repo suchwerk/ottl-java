@@ -13,11 +13,19 @@
                 clickable
                 :active="selectedKey === rule.context + '/' + rule.ruleId"
                 active-class="bg-blue-1 text-primary"
+                :data-testid="'rule-' + rule.context + '-' + rule.ruleId"
                 @click="$emit('select', rule)"
             >
                 <q-item-section>
                     <q-item-label>{{ rule.ruleId }}</q-item-label>
                     <q-item-label caption>{{ rule.context }}</q-item-label>
+                    <q-item-label
+                        v-if="dirty && selectedKey === rule.context + '/' + rule.ruleId"
+                        caption
+                        class="text-orange-9"
+                    >
+                        Unsaved edits
+                    </q-item-label>
                 </q-item-section>
                 <q-item-section side>
                     <q-badge color="secondary" :label="'v' + rule.version" />
@@ -30,7 +38,7 @@
 <script setup lang="ts">
 import type { RuleDto } from '../api/editor';
 
-defineProps<{ rules: RuleDto[]; selectedKey: string }>();
+defineProps<{ rules: RuleDto[]; selectedKey: string; dirty: boolean }>();
 defineEmits<{
     (e: 'select', rule: RuleDto): void;
     (e: 'refresh'): void;

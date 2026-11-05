@@ -53,5 +53,8 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Session unit tests
+        run: npm run test:unit
+
       - name: Type-check and build
         run: npm run build

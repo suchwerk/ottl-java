@@ -1,6 +1,18 @@
 import { computed, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { editorApi, type ContextDto, type FunctionDto, type RuleDto } from '../api/editor';
+import {
+    chooseRule,
+    decideActivation,
+    initialSelection,
+    isDirty,
+    revertToActive,
+    ruleKey,
+    sessionAfterActivation,
+    switchContext,
+    type RuleSnapshot,
+    type SessionSnapshot
+} from './editorSessionPolicy';
 
 /** Methods the layout toolbar can call on the mounted editor page. */
 export interface EditorPaneApi {
@@ -18,9 +30,19 @@ const initialText = ref('');
 const editorText = ref('');
 const editor = ref<EditorPaneApi | null>(null);
 const lspStatus = ref<'connecting' | 'connected' | 'disconnected'>('connecting');
+const activating = ref(false);
+const drafts = ref<Record<string, string>>({});
+const selectionByContext = ref<Record<string, string>>({});
+
+/** Bumped when the user changes context, rule, or reverts, so a late activation cannot retarget the editor. */
+let epoch = 0;
 
 const contextNames = computed(() => contexts.value.map((c) => c.name));
 const source = computed(() => stripDirective(editorText.value));
+const selectedRule = computed(() =>
+    rules.value.find((rule) => ruleKey(rule) === selectedKey.value && rule.context === context.value)
+);
+const dirty = computed(() => isDirty(rules.value, context.value, selectedKey.value, source.value));
 const statusColor = computed(() =>
     lspStatus.value === 'connected' ? 'positive' : lspStatus.value === 'connecting' ? 'warning' : 'negative'
 );
@@ -37,27 +59,48 @@ function buildEditorText(ctx: string, src: string): string {
     return `# context: ${ctx}\n${src}`;
 }
 
+function snapshot(): SessionSnapshot {
+    return {
+        context: context.value,
+        selectedKey: selectedKey.value,
+        source: source.value,
+        drafts: drafts.value,
+        selectionByContext: selectionByContext.value
+    };
+}
+
+function publish(next: SessionSnapshot) {
+    context.value = next.context;
+    selectedKey.value = next.selectedKey;
+    drafts.value = { ...next.drafts };
+    selectionByContext.value = { ...next.selectionByContext };
+    const text = buildEditorText(next.context, next.source);
+    editorText.value = text;
+    editor.value?.setText(text);
+}
+
 function onEditorChange(text: string) {
     editorText.value = text;
 }
 
 function selectRule(rule: RuleDto) {
-    selectedKey.value = `${rule.context}/${rule.ruleId}`;
-    context.value = rule.context;
-    const text = buildEditorText(rule.context, rule.source);
-    editorText.value = text;
-    editor.value?.setText(text);
+    const current = snapshot();
+    const next = chooseRule(current, rule);
+    if (next === current) {
+        return;
+    }
+    epoch += 1;
+    publish(next);
 }
 
-function setContext(next: string) {
-    context.value = next;
-    const text = buildEditorText(next, source.value);
-    editorText.value = text;
-    editor.value?.setText(text);
-}
-
-function currentRule(): RuleDto | undefined {
-    return rules.value.find((r) => `${r.context}/${r.ruleId}` === selectedKey.value);
+function setContext(nextContext: string) {
+    const current = snapshot();
+    const next = switchContext(current, rules.value, nextContext);
+    if (next === current) {
+        return;
+    }
+    epoch += 1;
+    publish(next);
 }
 
 async function loadRules() {
@@ -70,17 +113,29 @@ async function load() {
     functions.value = metadata.functions;
     await loadRules();
 
-    const first = rules.value[0];
-    if (first) {
-        context.value = first.context;
-        selectedKey.value = `${first.context}/${first.ruleId}`;
-        initialText.value = buildEditorText(first.context, first.source);
-    } else if (contexts.value[0]) {
-        context.value = contexts.value[0].name;
-        initialText.value = buildEditorText(context.value, '');
-    }
-    editorText.value = initialText.value;
+    const initial = initialSelection(
+        rules.value,
+        contexts.value.map((item) => item.name)
+    );
+    epoch += 1;
+    drafts.value = {};
+    selectionByContext.value = { ...initial.selectionByContext };
+    context.value = initial.context;
+    selectedKey.value = initial.selectedKey;
+    const text = buildEditorText(initial.context, initial.source);
+    initialText.value = text;
+    editorText.value = text;
+    editor.value?.setText(text);
     loaded.value = true;
+}
+
+function toSnapshot(rule: RuleDto): RuleSnapshot {
+    return {
+        context: rule.context,
+        ruleId: rule.ruleId,
+        source: rule.source,
+        version: rule.version
+    };
 }
 
 /**
@@ -104,28 +159,43 @@ export function useEditorSession() {
     }
 
     async function activate() {
-        const rule = currentRule();
-        if (!rule) {
+        const decision = decideActivation(snapshot(), rules.value);
+        if (!decision.ok) {
+            $q.notify({ type: 'negative', message: decision.message });
             return;
         }
+        if (activating.value) {
+            return;
+        }
+        const started = epoch;
+        activating.value = true;
         try {
-            const updated = await editorApi.activate(context.value, rule.ruleId, source.value);
-            $q.notify({ type: 'positive', message: `Activated ${updated.ruleId} (v${updated.version}).` });
+            const updated = await editorApi.activate(decision.context, decision.ruleId, decision.source);
             await loadRules();
-            selectedKey.value = `${updated.context}/${updated.ruleId}`;
+            if (started === epoch) {
+                const next = sessionAfterActivation(snapshot(), { ok: true, rule: toSnapshot(updated) });
+                context.value = next.context;
+                selectedKey.value = next.selectedKey;
+                drafts.value = { ...next.drafts };
+                selectionByContext.value = { ...next.selectionByContext };
+            }
+            $q.notify({ type: 'positive', message: `Activated ${updated.ruleId} (v${updated.version}).` });
         } catch (e) {
+            // The previous active version stays in place. Do not retarget the selection.
             $q.notify({ type: 'negative', message: (e as Error).message });
+        } finally {
+            activating.value = false;
         }
     }
 
     function revert() {
-        const rule = currentRule();
-        if (!rule) {
+        const result = revertToActive(snapshot(), rules.value);
+        if (!result.ok) {
+            $q.notify({ type: 'warning', message: result.message });
             return;
         }
-        const text = buildEditorText(rule.context, rule.source);
-        editorText.value = text;
-        editor.value?.setText(text);
+        epoch += 1;
+        publish(result.session);
         $q.notify({ message: 'Reverted to the active rule.' });
     }
 
@@ -139,6 +209,9 @@ export function useEditorSession() {
         context,
         contextNames,
         selectedKey,
+        selectedRule,
+        dirty,
+        activating,
         initialText,
         editorText,
         source,
