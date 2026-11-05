@@ -14,33 +14,59 @@ const emit = defineEmits<{
 
 const host = ref<HTMLElement | null>(null);
 let handle: OttlEditorHandle | undefined;
+let cancelled = false;
+let queuedText: string | undefined;
 
 function wsUrl(): string {
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
     return `${scheme}://${window.location.host}/ottl/lsp`;
 }
 
-onMounted(async () => {
-    if (!host.value) {
+onMounted(() => {
+    const container = host.value;
+    if (!container) {
         return;
     }
-    handle = await startOttlEditor({
-        container: host.value,
-        initialCode: props.initialText,
-        wsUrl: wsUrl(),
-        onStatus: (s) => emit('status', s)
-    });
-    handle.onContentChanged((t) => emit('change', t));
+    void (async () => {
+        const started = await startOttlEditor({
+            container,
+            initialCode: queuedText ?? props.initialText,
+            wsUrl: wsUrl(),
+            onStatus: (status) => emit('status', status)
+        });
+        if (cancelled) {
+            await started.dispose();
+            return;
+        }
+        started.onContentChanged((text) => emit('change', text));
+        if (queuedText !== undefined) {
+            started.setText(queuedText);
+            queuedText = undefined;
+        }
+        handle = started;
+        if (cancelled) {
+            handle = undefined;
+            await started.dispose();
+        }
+    })();
 });
 
-onBeforeUnmount(async () => {
-    await handle?.dispose();
+onBeforeUnmount(() => {
+    cancelled = true;
+    const current = handle;
     handle = undefined;
+    void current?.dispose();
 });
 
 defineExpose({
-    setText: (text: string) => handle?.setText(text),
-    getText: () => handle?.getText() ?? ''
+    setText: (text: string) => {
+        if (handle) {
+            handle.setText(text);
+        } else {
+            queuedText = text;
+        }
+    },
+    getText: () => handle?.getText() ?? queuedText ?? props.initialText
 });
 </script>
 

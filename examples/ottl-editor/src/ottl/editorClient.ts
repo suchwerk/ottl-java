@@ -70,7 +70,7 @@ async function ensureApiStarted(container: HTMLElement, initialCode: string): Pr
     };
 
     apiWrapper = new MonacoVscodeApiWrapper(config);
-    apiStarted = apiWrapper.start().then(() => {
+    const starting = apiWrapper.start().then(() => {
         monaco.languages.register({
             id: OTTL_LANGUAGE_ID,
             extensions: ['.ottl'],
@@ -79,7 +79,16 @@ async function ensureApiStarted(container: HTMLElement, initialCode: string): Pr
         monaco.languages.setLanguageConfiguration(OTTL_LANGUAGE_ID, ottlLanguageConfiguration);
         monaco.languages.setMonarchTokensProvider(OTTL_LANGUAGE_ID, ottlMonarchTokens);
     });
-    return apiStarted;
+    apiStarted = starting;
+    try {
+        await starting;
+    } catch (err) {
+        if (apiStarted === starting) {
+            apiStarted = undefined;
+            apiWrapper = undefined;
+        }
+        throw err;
+    }
 }
 
 function ottlModel(): monaco.editor.ITextModel | undefined {
@@ -93,101 +102,136 @@ export interface StartOptions {
     onStatus: (status: LspStatus) => void;
 }
 
+/** One editor and one language client at a time. The next start waits until the previous dispose. */
+let editorQueue: Promise<void> = Promise.resolve();
+
 export async function startOttlEditor(options: StartOptions): Promise<OttlEditorHandle> {
-    const { container, initialCode, wsUrl, onStatus } = options;
-
-    onStatus('connecting');
-    await ensureApiStarted(container, initialCode);
-
-    const uri = vscode.Uri.file(DOC_PATH);
-
-    const editorAppConfig: EditorAppConfig = {
-        codeResources: {
-            modified: {
-                text: initialCode,
-                uri: uri.path
-            }
-        }
-    };
-
-    const connectionConfigOptions: ConnectionConfigOptions = {
-        $family: 'WebSocket',
-        realization: () => new LcWebSocket(),
-        webSocketUrl: wsUrl,
-        startOptions: {
-            onCall: () => onStatus('connected'),
-            reportStatus: true
-        },
-        stopOptions: {
-            onCall: () => onStatus('disconnected'),
-            reportStatus: true
-        }
-    };
-
-    const languageClientConfig: LanguageClientConfig = {
-        languageId: OTTL_LANGUAGE_ID,
-        connection: { options: connectionConfigOptions },
-        clientOptions: {
-            documentSelector: [OTTL_LANGUAGE_ID],
-            workspaceFolder: {
-                index: 0,
-                name: 'workspace',
-                uri: vscode.Uri.file('/workspace')
-            }
-        }
-    };
-
-    const editorApp = new EditorApp(editorAppConfig);
-    const lcWrapper = new LanguageClientWrapper(languageClientConfig);
-
-    await editorApp.start(container);
-
-    let disposed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const connect = async () => {
-        if (disposed) {
-            return;
-        }
-        try {
-            onStatus('connecting');
-            await lcWrapper.start();
-            await vscode.workspace.openTextDocument(uri);
-            onStatus('connected');
-        } catch (err) {
-            console.error('OTTL language client failed to start', err);
-            onStatus('disconnected');
-            if (!disposed) {
-                reconnectTimer = setTimeout(connect, 3000);
-            }
-        }
-    };
-
-    await connect();
-
-    const changeListeners: Array<(text: string) => void> = [];
-    const model = ottlModel();
-    model?.onDidChangeContent(() => {
-        const text = model.getValue();
-        changeListeners.forEach((l) => l(text));
+    let releaseQueue!: () => void;
+    const gate = new Promise<void>((resolve) => {
+        releaseQueue = resolve;
     });
+    const previous = editorQueue;
+    editorQueue = previous.then(() => gate);
+    await previous;
 
-    return {
-        getText: () => ottlModel()?.getValue() ?? '',
-        setText: (text: string) => {
-            const m = ottlModel();
-            if (m && m.getValue() !== text) {
-                m.setValue(text);
-            }
-        },
-        onContentChanged: (listener) => changeListeners.push(listener),
-        dispose: async () => {
-            disposed = true;
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer);
-            }
-            await lcWrapper.dispose();
-            await editorApp.dispose();
+    let released = false;
+    const releaseOnce = () => {
+        if (!released) {
+            released = true;
+            releaseQueue();
         }
     };
+
+    const { container, initialCode, wsUrl, onStatus } = options;
+    try {
+        onStatus('connecting');
+        await ensureApiStarted(container, initialCode);
+
+        const uri = vscode.Uri.file(DOC_PATH);
+
+        const editorAppConfig: EditorAppConfig = {
+            codeResources: {
+                modified: {
+                    text: initialCode,
+                    uri: uri.path
+                }
+            }
+        };
+
+        const connectionConfigOptions: ConnectionConfigOptions = {
+            $family: 'WebSocket',
+            realization: () => new LcWebSocket(),
+            webSocketUrl: wsUrl,
+            startOptions: {
+                onCall: () => onStatus('connected'),
+                reportStatus: true
+            },
+            stopOptions: {
+                onCall: () => onStatus('disconnected'),
+                reportStatus: true
+            }
+        };
+
+        const languageClientConfig: LanguageClientConfig = {
+            languageId: OTTL_LANGUAGE_ID,
+            connection: { options: connectionConfigOptions },
+            clientOptions: {
+                documentSelector: [OTTL_LANGUAGE_ID],
+                workspaceFolder: {
+                    index: 0,
+                    name: 'workspace',
+                    uri: vscode.Uri.file('/workspace')
+                }
+            }
+        };
+
+        const editorApp = new EditorApp(editorAppConfig);
+        const lcWrapper = new LanguageClientWrapper(languageClientConfig);
+
+        await editorApp.start(container);
+        const existing = ottlModel();
+        if (existing && existing.getValue() !== initialCode) {
+            existing.setValue(initialCode);
+        }
+
+        let disposed = false;
+        let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+        const connect = async () => {
+            if (disposed) {
+                return;
+            }
+            try {
+                onStatus('connecting');
+                await lcWrapper.start();
+                await vscode.workspace.openTextDocument(uri);
+                onStatus('connected');
+            } catch (err) {
+                console.error('OTTL language client failed to start', err);
+                onStatus('disconnected');
+                if (!disposed) {
+                    reconnectTimer = setTimeout(connect, 3000);
+                }
+            }
+        };
+
+        await connect();
+
+        const changeListeners: Array<(text: string) => void> = [];
+        const model = ottlModel();
+        const contentSubscription = model?.onDidChangeContent(() => {
+            const text = model.getValue();
+            changeListeners.forEach((listener) => listener(text));
+        });
+
+        return {
+            getText: () => ottlModel()?.getValue() ?? '',
+            setText: (text: string) => {
+                const current = ottlModel();
+                if (current && current.getValue() !== text) {
+                    current.setValue(text);
+                }
+            },
+            onContentChanged: (listener) => changeListeners.push(listener),
+            dispose: async () => {
+                if (disposed) {
+                    return;
+                }
+                disposed = true;
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                }
+                contentSubscription?.dispose();
+                try {
+                    await lcWrapper.dispose();
+                    await editorApp.dispose();
+                } finally {
+                    releaseOnce();
+                }
+            }
+        };
+    } catch (err) {
+        releaseOnce();
+        throw err;
+    }
 }
