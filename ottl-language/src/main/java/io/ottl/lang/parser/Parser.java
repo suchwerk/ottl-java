@@ -62,8 +62,10 @@ import java.util.Set;
 public final class Parser {
 
     /**
-     * Hard ceiling on {@code where}, block, and {@code if} nesting. The parser refuses to recurse
-     * past this even if a caller asks for more, so a hostile script cannot overflow the stack.
+     * Hard ceiling on recursive constructs: {@code where} / block / {@code if} nesting, and also
+     * parentheses, lists, maps, calls, indexes, lambdas, and {@code not}. The parser refuses to
+     * recurse past this even if a caller asks for more, so a hostile script cannot overflow the stack.
+     * Configured {@code maxNesting} still limits {@code where}, blocks, and {@code if} only.
      */
     public static final int MAX_NESTING = 64;
 
@@ -72,7 +74,8 @@ public final class Parser {
     private final int maxNesting;
     private int index;
     private int depth;
-    private int parenDepth;
+    /** Shared ceiling for every recursive value or condition construct. */
+    private int valueDepth;
 
     public Parser(List<Token> tokens) {
         this(tokens, OttlDialect.OTTL, MAX_NESTING);
@@ -164,7 +167,7 @@ public final class Parser {
 
     /** {@code where} followed by a condition and a block. {@code where(...)} stays an editor call. */
     private boolean isWhereBlock() {
-        return checkKeyword("where") && !nextIs(1, TokenType.LPAREN);
+        return introducesWhereBlock();
     }
 
     private WhereBlock whereBlock() {
@@ -263,12 +266,19 @@ public final class Parser {
         return new Statement(editor, where, nameTok.line(), nameTok.column());
     }
 
-    /** True when the current token is {@code where <condition> '{'}. Parser position is unchanged. */
+    /**
+     * True when the current token is {@code where <condition> '{'}. Parser position is unchanged.
+     * {@code where(...)} is an editor call, including {@code where(x) { ... }}. A parenthesized
+     * condition such as {@code where (b > 1) { ... }} is a where block because it is not a call.
+     * Speculative parsing restores every mutable cursor, not only the token index.
+     */
     private boolean introducesWhereBlock() {
-        if (!checkKeyword("where") || nextIs(1, TokenType.LPAREN)) {
+        if (!checkKeyword("where") || isWhereEditorCall()) {
             return false;
         }
         int mark = index;
+        int markDepth = depth;
+        int markValue = valueDepth;
         try {
             advance();
             condition();
@@ -277,6 +287,28 @@ public final class Parser {
             return false;
         } finally {
             index = mark;
+            depth = markDepth;
+            valueDepth = markValue;
+        }
+    }
+
+    /** True when {@code where(...)} parses as an editor invocation. Position is unchanged. */
+    private boolean isWhereEditorCall() {
+        if (!checkKeyword("where") || !nextIs(1, TokenType.LPAREN)) {
+            return false;
+        }
+        int mark = index;
+        int markDepth = depth;
+        int markValue = valueDepth;
+        try {
+            functionCall(true);
+            return true;
+        } catch (OttlParseException e) {
+            return false;
+        } finally {
+            index = mark;
+            depth = markDepth;
+            valueDepth = markValue;
         }
     }
 
@@ -308,8 +340,13 @@ public final class Parser {
 
     private Condition unaryCond() {
         if (checkKeyword("not")) {
-            advance();
-            return new Condition.Not(unaryCond());
+            Token notTok = advance();
+            enterValue(notTok);
+            try {
+                return new Condition.Not(unaryCond());
+            } finally {
+                valueDepth--;
+            }
         }
         // A leading '(' may group a boolean expression or a math expression. Try the value form
         // first so `(1 + 2) > 3` is a comparison. If that fails, group a boolean expression.
@@ -329,13 +366,13 @@ public final class Parser {
         }
         if (check(TokenType.LPAREN)) {
             Token open = advance();
-            enterParen(open);
+            enterValue(open);
             try {
                 Condition inner = condition();
                 expect(TokenType.RPAREN, "')' to close condition group");
                 return inner;
             } finally {
-                parenDepth--;
+                valueDepth--;
             }
         }
         throw valueFailure;
@@ -445,45 +482,55 @@ public final class Parser {
 
     private Expression grouped() {
         Token open = advance();
-        enterParen(open);
+        enterValue(open);
         try {
             Expression inner = expression();
             expect(TokenType.RPAREN, "')' to close group");
             return inner;
         } finally {
-            parenDepth--;
+            valueDepth--;
         }
     }
 
     private Expression listLiteral() {
-        advance(); // '['
-        List<Expression> elements = new ArrayList<>();
-        if (!check(TokenType.RBRACKET)) {
-            elements.add(expression());
-            while (check(TokenType.COMMA)) {
-                advance();
+        Token open = advance(); // '['
+        enterValue(open);
+        try {
+            List<Expression> elements = new ArrayList<>();
+            if (!check(TokenType.RBRACKET)) {
                 elements.add(expression());
+                while (check(TokenType.COMMA)) {
+                    advance();
+                    elements.add(expression());
+                }
             }
+            expect(TokenType.RBRACKET, "']' to close list");
+            return new Expression.ListLiteral(elements);
+        } finally {
+            valueDepth--;
         }
-        expect(TokenType.RBRACKET, "']' to close list");
-        return new Expression.ListLiteral(elements);
     }
 
     private Expression mapLiteral() {
-        advance(); // '{'
-        List<Expression.MapEntry> entries = new ArrayList<>();
-        if (!check(TokenType.RBRACE)) {
-            entries.add(mapEntry());
-            while (check(TokenType.COMMA)) {
-                advance();
-                if (check(TokenType.RBRACE)) {
-                    break;
-                }
+        Token open = advance(); // '{'
+        enterValue(open);
+        try {
+            List<Expression.MapEntry> entries = new ArrayList<>();
+            if (!check(TokenType.RBRACE)) {
                 entries.add(mapEntry());
+                while (check(TokenType.COMMA)) {
+                    advance();
+                    if (check(TokenType.RBRACE)) {
+                        break;
+                    }
+                    entries.add(mapEntry());
+                }
             }
+            expect(TokenType.RBRACE, "'}' to close map");
+            return new Expression.MapLiteral(entries);
+        } finally {
+            valueDepth--;
         }
-        expect(TokenType.RBRACE, "'}' to close map");
-        return new Expression.MapLiteral(entries);
     }
 
     private Expression.MapEntry mapEntry() {
@@ -564,27 +611,37 @@ public final class Parser {
             throw error(nameTok, "Converter names must start with an uppercase letter but got '" + name + "'");
         }
         expect(TokenType.LPAREN, "'(' after function name");
-        List<Expression> args = new ArrayList<>();
-        List<Optional<String>> names = new ArrayList<>();
-        boolean seenNamed = false;
-        if (!check(TokenType.RPAREN)) {
-            seenNamed = argument(args, names, seenNamed);
-            while (check(TokenType.COMMA)) {
-                advance();
+        enterValue(nameTok);
+        try {
+            List<Expression> args = new ArrayList<>();
+            List<Optional<String>> names = new ArrayList<>();
+            boolean seenNamed = false;
+            if (!check(TokenType.RPAREN)) {
                 seenNamed = argument(args, names, seenNamed);
+                while (check(TokenType.COMMA)) {
+                    advance();
+                    seenNamed = argument(args, names, seenNamed);
+                }
             }
-        }
-        expect(TokenType.RPAREN, "')' to close argument list");
-        List<Expression> keys = new ArrayList<>();
-        while (check(TokenType.LBRACKET)) {
-            if (editor) {
-                throw error(peek(), "Only paths and converters may be indexed, not editors");
+            expect(TokenType.RPAREN, "')' to close argument list");
+            List<Expression> keys = new ArrayList<>();
+            while (check(TokenType.LBRACKET)) {
+                if (editor) {
+                    throw error(peek(), "Only paths and converters may be indexed, not editors");
+                }
+                Token bracket = advance();
+                enterValue(bracket);
+                try {
+                    keys.add(expression());
+                    expect(TokenType.RBRACKET, "']' to close index");
+                } finally {
+                    valueDepth--;
+                }
             }
-            advance();
-            keys.add(expression());
-            expect(TokenType.RBRACKET, "']' to close index");
+            return new Expression.FunctionCall(name, args, names, keys);
+        } finally {
+            valueDepth--;
         }
-        return new Expression.FunctionCall(name, args, names, keys);
     }
 
     /** @return {@code true} once a named argument has been seen */
@@ -621,9 +678,15 @@ public final class Parser {
 
     private void readIndexes(List<Expression.PathSegment> segments) {
         while (check(TokenType.LBRACKET)) {
-            advance();
-            Expression key = expression();
-            expect(TokenType.RBRACKET, "']' to close key access");
+            Token bracket = advance();
+            enterValue(bracket);
+            Expression key;
+            try {
+                key = expression();
+                expect(TokenType.RBRACKET, "']' to close key access");
+            } finally {
+                valueDepth--;
+            }
             if (key instanceof Expression.StringLiteral s) {
                 segments.add(new Expression.KeySegment(s.value()));
             } else if (key instanceof Expression.IntLiteral i) {
@@ -636,7 +699,7 @@ public final class Parser {
 
     private Expression lambda() {
         Token open = expect(TokenType.LPAREN, "'(' to open lambda");
-        enterParen(open);
+        enterValue(open);
         List<String> params = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         try {
@@ -648,15 +711,15 @@ public final class Parser {
                 }
             }
             expect(TokenType.RPAREN, "')' after lambda parameters");
+            expect(TokenType.ARROW, "'=>' after lambda parameters");
+            Expression.LambdaBody body = lambdaBody();
+            if (body instanceof Expression.LambdaValue value && value.expression() instanceof Expression.Lambda) {
+                throw error(open, "Lambda body cannot be another lambda");
+            }
+            return new Expression.Lambda(params, body);
         } finally {
-            parenDepth--;
+            valueDepth--;
         }
-        expect(TokenType.ARROW, "'=>' after lambda parameters");
-        Expression.LambdaBody body = lambdaBody();
-        if (body instanceof Expression.LambdaValue value && value.expression() instanceof Expression.Lambda) {
-            throw error(open, "Lambda body cannot be another lambda");
-        }
-        return new Expression.Lambda(params, body);
     }
 
     private String lambdaParam(Set<String> seen) {
@@ -756,11 +819,11 @@ public final class Parser {
                 && (token.text().equals("true") || token.text().equals("false") || token.text().equals("nil"));
     }
 
-    private void enterParen(Token at) {
-        if (parenDepth + 1 > MAX_NESTING) {
+    private void enterValue(Token at) {
+        if (valueDepth + 1 > MAX_NESTING) {
             throw error(at, "Nesting too deep (limit " + MAX_NESTING + ")");
         }
-        parenDepth++;
+        valueDepth++;
     }
 
     private static boolean isLower(char c) {

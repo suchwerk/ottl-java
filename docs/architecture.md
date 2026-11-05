@@ -360,10 +360,12 @@ property does not replace the active rule.
 ### Limits and what is intentionally absent
 
 `OttlLimits.maxStatements` counts editor calls in every branch. `maxCallDepth` counts each `where`
-block, bare block, and `if` / `else if` as one level. The braces that belong to an `if` or `else` do
-not add a second level. `maxCallDepth` must be between 1 and 64; the parser will not recurse past
-that, so a deeply nested script cannot overflow the stack. There is no `while`, `for`, `foreach`,
-recursive call, or arbitrary method invocation.
+block, bare block, and `if` / `else if` as one level, and the validator applies that same limit to
+nested function calls. The braces that belong to an `if` or `else` do not add a second level.
+`maxCallDepth` must be between 1 and 64. Parentheses, lists, maps, calls, indexes, lambdas, and
+`not` share a separate hard ceiling of 64 in the parser, including when the configured block limit
+is lower, so a deeply nested script cannot overflow the stack. There is no `while`, `for`,
+`foreach`, recursive call, or arbitrary method invocation.
 
 `let`, `switch` / `case`, and named `rule` blocks are not implemented. A `Block` is the place a
 future immutable lexical `let` would be scoped. Nothing stores per-execution bindings today. Those

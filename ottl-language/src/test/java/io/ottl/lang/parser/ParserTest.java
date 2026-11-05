@@ -4,6 +4,8 @@
  */
 package io.ottl.lang.parser;
 
+import io.ottl.lang.OttlDialect;
+import io.ottl.lang.ast.Block;
 import io.ottl.lang.ast.ComparisonOperator;
 import io.ottl.lang.ast.Condition;
 import io.ottl.lang.ast.Expression;
@@ -236,5 +238,98 @@ class ParserTest {
         assertThatThrownBy(() -> Parser.parse("set(x, 1)[0]"))
                 .isInstanceOf(OttlParseException.class)
                 .hasMessageContaining("not editors");
+    }
+
+    @Test
+    void parenthesizedWhereBeforeBraceStaysAWhereBlock() {
+        OttlScript script = Parser.parse("""
+                set(a, 1) where (b > 1) {
+                    set(c, 2)
+                }
+                set(d, 3)
+                """);
+        assertThat(script.statements()).hasSize(3);
+        Statement first = (Statement) script.statements().get(0);
+        assertThat(first.condition()).isEmpty();
+        assertThat(script.statements().get(1)).isInstanceOf(WhereBlock.class);
+        assertThat(((Statement) script.statements().get(2)).editor().name()).isEqualTo("set");
+
+        OttlScript leading = Parser.parse("""
+                where (b > 1) {
+                    set(c, 2)
+                }
+                """);
+        assertThat(leading.statements()).hasSize(1);
+        assertThat(leading.statements().get(0)).isInstanceOf(WhereBlock.class);
+    }
+
+    @Test
+    void parenthesizedTrailingWhereStaysOnTheStatement() {
+        OttlScript script = Parser.parse("set(a, 1) where (b > 1)");
+        Statement stmt = (Statement) script.statements().get(0);
+        assertThat(stmt.condition()).isPresent();
+        assertThat(stmt.condition().orElseThrow()).isInstanceOf(Condition.Comparison.class);
+    }
+
+    @Test
+    void whereCallFollowedByABlockStaysAnEditorCall() {
+        OttlScript script = Parser.parse("""
+                where(flag)
+                {
+                    set(a, 1)
+                }
+                """, OttlDialect.EXTENDED);
+        assertThat(script.statements()).hasSize(2);
+        assertThat(script.statements().get(0)).isInstanceOf(Statement.class);
+        assertThat(((Statement) script.statements().get(0)).editor().name()).isEqualTo("where");
+        assertThat(script.statements().get(1)).isInstanceOf(Block.class);
+    }
+
+    @Test
+    void reportsMalformedMapAndLambda() {
+        assertThatThrownBy(() -> Parser.parse("set(a, {1: 2})"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("Map key")
+                .hasMessageContaining("[1:");
+        assertThatThrownBy(() -> Parser.parse("set(a, {\"k\" 1})"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("':'");
+        assertThatThrownBy(() -> Parser.parse("set(a, (x, x) => 1)"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("Duplicate lambda parameter");
+        assertThatThrownBy(() -> Parser.parse("set(a, (x) => )"))
+                .isInstanceOf(OttlParseException.class)
+                .hasMessageContaining("Expected a value");
+    }
+
+    @Test
+    void rejectsValueNestingPastTheHardCeiling() {
+        assertNestingRejected("set(a, " + "[".repeat(80) + "1" + "]".repeat(80) + ")");
+        assertNestingRejected("set(a, " + "{\"k\":".repeat(80) + "1" + "}".repeat(80) + ")");
+        assertNestingRejected("set(a, " + "Len(".repeat(80) + "a" + ")".repeat(80) + ")");
+        StringBuilder indexes = new StringBuilder("set(a, ");
+        indexes.append("root[".repeat(80)).append("0").append("]".repeat(80)).append(")");
+        assertNestingRejected(indexes.toString());
+        assertNestingRejected("set(a, 1) where " + "not ".repeat(80) + "true");
+        StringBuilder lambdas = new StringBuilder("set(a, ");
+        lambdas.append("(x)=>Len(".repeat(80)).append("x").append(")".repeat(80)).append(")");
+        assertNestingRejected(lambdas.toString());
+    }
+
+    @Test
+    void moderateValueNestingStillParsesWhenTheBlockLimitIsOne() {
+        OttlScript script = Parser.parse("set(a, [[1]])", OttlDialect.OTTL, 1);
+        assertThat(script.statements()).hasSize(1);
+        assertThat(Parser.parse("set(a, {\"k\": {\"n\": 1}})").statements()).hasSize(1);
+        assertThat(Parser.parse("set(a, (x) => Len((y) => y))").statements()).hasSize(1);
+    }
+
+    private static void assertNestingRejected(String source) {
+        OttlParseException ex = org.assertj.core.api.Assertions.catchThrowableOfType(
+                () -> Parser.parse(source), OttlParseException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getMessage()).contains("Nesting too deep (limit " + Parser.MAX_NESTING + ")");
+        assertThat(ex.line()).isEqualTo(1);
+        assertThat(ex.column()).isPositive();
     }
 }
