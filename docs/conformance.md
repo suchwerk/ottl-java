@@ -94,6 +94,19 @@ follow the collector implementations of the shipped functions, with these differ
 - `append` rejects a map target. `values` appends each element of the list. At least one of
   `value` or `values` is required. An optional parameter may be omitted when a later one is named.
 
+## Stabilization review
+
+A correctness pass re-checked the shipped editors and converters against the cases in
+`ConverterConformanceTest`, `StringFunctionConformanceTest`, `CollectionEditorConformanceTest`, and
+`OttlSyntaxConformanceTest`, and against the differences listed above. That pass did not find an
+undocumented semantic mismatch. It is not a claim of full OTTL v1 compliance: pdata contexts and the
+rest of the collector function library are still absent, and the Java regex / UTF-8 decoder
+differences above remain intentional.
+
+`ParserTest.rejectsValueNestingPastTheHardCeiling` covers the parser ceiling for lists, maps, calls,
+indexes, `not`, and lambdas. `maxCallDepth` remains the configured limit for calls and for
+`where` / block / `if` nesting.
+
 ## Adding new conformance cases
 
 1. Add the OTTL source and expected result to a test in the `standard/` package.
