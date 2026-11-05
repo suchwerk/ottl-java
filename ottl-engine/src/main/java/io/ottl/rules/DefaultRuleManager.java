@@ -42,13 +42,25 @@ public final class DefaultRuleManager<T> implements RuleManager<T> {
     @Override
     public void activate(String id, String source) {
         active.compute(id, (key, previous) -> {
-            int nextVersion = previous == null ? 1 : previous.definition().version() + 1;
-            // Compile first. If this throws, compute() leaves the mapping untouched (previous kept).
+            int nextVersion = nextVersion(previous, id);
+            // Compile first. If this throws, compute() leaves the mapping untouched (previous kept)
+            // and the repository is not updated.
             OttlProgram<T> program = engine.compile(source, type);
             RuleDefinition definition = new RuleDefinition(id, source, nextVersion, Instant.now());
             repository.save(definition);
             return new ActiveRule<>(definition, program);
         });
+    }
+
+    /**
+     * Continue the version sequence. A rule that lives only in the repository (a fresh manager, or
+     * a process that has not activated it yet) must not restart at 1.
+     */
+    private int nextVersion(ActiveRule<T> previous, String id) {
+        if (previous != null) {
+            return previous.definition().version() + 1;
+        }
+        return repository.find(id).map(definition -> definition.version() + 1).orElse(1);
     }
 
     @Override

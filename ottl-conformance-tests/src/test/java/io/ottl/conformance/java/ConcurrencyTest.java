@@ -4,14 +4,18 @@
  */
 package io.ottl.conformance.java;
 
+import io.ottl.OttlCompilationException;
 import io.ottl.OttlEngine;
 import io.ottl.OttlProfile;
 import io.ottl.conformance.model.Order;
 import io.ottl.rules.InMemoryRuleRepository;
+import io.ottl.rules.RuleDefinition;
 import io.ottl.rules.RuleManager;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -19,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Concurrent reads (apply) while rules are being replaced must be safe and consistent. */
 class ConcurrencyTest {
@@ -66,6 +71,35 @@ class ConcurrencyTest {
                 f.get(60, TimeUnit.SECONDS);
             }
             assertThat(errors.get()).isZero();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void failedConcurrentActivationDoesNotReplaceTheActiveRule() throws Exception {
+        OttlEngine engine = OttlEngine.builder().profile(OttlProfile.JAVA).build();
+        RuleManager<Order> rules = engine.ruleManager(Order.class, new InMemoryRuleRepository());
+        rules.activate("r", "set(order.status, \"OK\")");
+
+        ExecutorService pool = Executors.newFixedThreadPool(4);
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                futures.add(pool.submit(() -> {
+                    Order order = new Order("o", BigDecimal.ONE, "NEW", "LOW");
+                    for (int n = 0; n < 25; n++) {
+                        assertThatThrownBy(() -> rules.activate("r", "set(order.status, )"))
+                                .isInstanceOf(OttlCompilationException.class);
+                        assertThat(rules.apply("r", order).status()).isEqualTo("OK");
+                    }
+                }));
+            }
+            for (Future<?> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+            assertThat(rules.active("r").map(RuleDefinition::version)).contains(1);
+            assertThat(rules.active("r").map(RuleDefinition::source)).contains("set(order.status, \"OK\")");
         } finally {
             pool.shutdownNow();
         }

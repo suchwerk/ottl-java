@@ -15,6 +15,7 @@ import io.ottl.rules.RuleRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,6 +55,39 @@ class RuleManagerTest {
         assertThat(rules.active("r").map(RuleDefinition::version)).contains(1);
         Order o = new Order("o", new BigDecimal("1"), "NEW", "LOW");
         assertThat(rules.apply("r", o).status()).isEqualTo("A");
+    }
+
+    @Test
+    void activationContinuesTheStoredVersion() {
+        RuleRepository repo = new InMemoryRuleRepository();
+        repo.save(new RuleDefinition("r", "set(order.status, \"A\")", 4, Instant.EPOCH));
+        RuleManager<Order> rules = engine.ruleManager(Order.class, repo);
+
+        rules.activate("r", "set(order.status, \"B\")");
+
+        assertThat(rules.active("r")).hasValueSatisfying(def -> {
+            assertThat(def.version()).isEqualTo(5);
+            assertThat(def.source()).isEqualTo("set(order.status, \"B\")");
+        });
+        Order order = new Order("o", BigDecimal.ONE, "NEW", "LOW");
+        assertThat(rules.apply("r", order).status()).isEqualTo("B");
+    }
+
+    @Test
+    void failedActivationKeepsTheStoredRule() {
+        RuleRepository repo = new InMemoryRuleRepository();
+        repo.save(new RuleDefinition("r", "set(order.status, \"A\")", 4, Instant.EPOCH));
+        RuleManager<Order> rules = engine.ruleManager(Order.class, repo);
+
+        assertThatThrownBy(() -> rules.activate("r", "set(order.status, )"))
+                .isInstanceOf(OttlCompilationException.class);
+
+        assertThat(rules.active("r")).hasValueSatisfying(def -> {
+            assertThat(def.version()).isEqualTo(4);
+            assertThat(def.source()).isEqualTo("set(order.status, \"A\")");
+        });
+        Order order = new Order("o", BigDecimal.ONE, "NEW", "LOW");
+        assertThat(rules.apply("r", order).status()).isEqualTo("A");
     }
 
     @Test
